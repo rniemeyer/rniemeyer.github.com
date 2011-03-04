@@ -1,0 +1,64 @@
+<html>
+	<head>
+		<style type="text/css">
+			h2 { font-weight: bold; }
+			p { font-size: .8em; }
+			div { padding-bottom: 20px; }
+		</style>
+	</head>
+	<body>
+		<input type="radio" name="choices" value="summary" data-bind="checked: selectedView" />Summary
+		<input type="radio" name="choices" value="details" data-bind="checked: selectedView" />Details
+		<hr/>
+
+		<div data-bind="template: { name: templateToUse, foreach: articles }"></div>
+
+		<script id="summary" type="text/html">
+			<div data-bind="text: title"></div>    
+		</script>
+
+		<script id="details" type="text/html">
+			<div>
+				<h2 data-bind="text: title"></h2>
+				<p data-bind="text: content"></p>
+				<button data-bind="click: function() { viewModel.selectedArticle($data); }">Edit</button>
+			</div>
+		</script>
+
+		<script id="edit" type="text/html">
+			<div>
+				<input data-bind="value: title" /><br/>
+				<input data-bind="value: content" />
+			</div>
+		</script>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.min.2010.03.04.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.2010.03.04.js"></script>
+		<script type="text/javascript">
+			var viewModel = {
+				articles: [{
+					id: 1,
+					title: "Article One",
+					content: "Content for article one."},
+				{
+					id: 2,
+					title: "Article Two",
+					content: "Content for article two."},
+				{
+					id: 3,
+					title: "Article Three",
+					content: "Content for article three."}
+														   ],
+				selectedView: ko.observable("summary"),
+				selectedArticle: ko.observable()
+			};
+
+			viewModel.templateToUse = function(item) {
+				return item === this.selectedArticle() ? 'edit' : this.selectedView();
+			}.bind(viewModel);
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>
