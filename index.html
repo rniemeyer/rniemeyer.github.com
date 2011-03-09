@@ -1,7 +1,37 @@
 <html>
 	<head>
+		<style type="text/css">
+			body { font-family: arial; }
+		</style>
 	</head>
-	</body>
-		<p>Index of samples</p>
+	<body>
+		<a href="http://knockmeout.net"><img src="KnockMeOut/Images/banner.png" /></a>
+		<h3>Sample Files</h3>
+		<ul data-bind="template: {name: 'linksTmpl', foreach: links }"></ul>
+		<script id="linksTmpl" type="text/html">
+			<li><a data-bind="attr: { href: url }, text: title"></a><span data-bind="text: description"></span>
+		</script>
+
+		
+		<script type="text/javascript" src="KnockMeOut/Scripts/jquery-1.5.min.js"></script>
+		<script type="text/javascript" src="KnockMeOut/Scripts/jquery.tmpl.min.2010.03.04.js"></script>
+		<script type="text/javascript" src="KnockMeOut/Scripts/knockout-latest.2010.03.04.js"></script>
+		<script type="text/javascript">
+			function Link(url, title, description) {
+				this.url = url;
+				this.title = title;
+				this.description = description;
+			}
+			
+			var viewModel = {
+				links: [
+					new Link("KnockMeOut/DynamicTemplateName.html", "Dynamically Changing Templates",""),
+					new Link("KnockMeOut/PassingTemplateOptions.html", "Passing Template Options",""),
+					new Link("KnockMeOut/ProtectedObservables.html", "Guard Your Model with protectedObservables",""),
+					new Link("KnockMeOut/NumericObservable.html", "Force values to numbers with numericObservables","")]
+			};
+
+			ko.applyBindings(viewModel);
+		</script>
 	</body>
 </html>
