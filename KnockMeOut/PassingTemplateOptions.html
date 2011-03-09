@@ -1,0 +1,56 @@
+<html>
+	<head>
+		<style type="text/css">
+			h2 { font-size: 1.5em; font-weight: bold }
+			h3 { font-size: 1.25em; font-weight: bold; }
+			em { font-size: .75em; font-style: italic }
+			.breakfast { background-color: #F3F781; }
+			.lunch { background-color: #81F7F3; }
+			.dinner{ background-color: #F5A9F2; }
+		</style>
+	</head>
+	<body>
+		<h2>My Menu</h2>
+		<hr />
+		<div data-bind="template: { name: 'items', data: breakfast, templateOptions: { header: 'Breakfast Items', message: 'Wake up to these delicious items!', class: 'breakfast' } }"></div>
+		<div data-bind="template: { name: 'items', data: lunch, templateOptions: { header: 'Lunch Dishes', message: 'Stop by for a quick lunch!', class: 'lunch' } }"></div>
+		<div data-bind="template: { name: 'items', data: dinner, templateOptions: { header: 'Dinner Entrees', message: 'Enjoy our tasty dinner selections!', class: 'dinner' } }"></div>
+
+		<script id="items" type="text/html">
+			<h3>${$item.header}</h3>
+			<div class="${$item.class}">
+				{{each $data}}
+				<p>
+					<span class="name">${name}</span>
+					<span class="price">${price}</span>
+				</p>
+				{{/each}}
+			</div>
+			<p><em>${$item.message}</em></p>
+			<hr />
+		</script>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.min.2010.03.04.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.2010.03.04.js"></script>
+		<script type="text/javascript">
+			var viewModel = {
+				breakfast: [
+					{name: "toast", price: 2.50},
+					{name: "pancakes", price: 4.00},
+					{name: "eggs", price: 3.25}],
+				lunch: [
+					{name: "grilled cheese", price: 4.00},
+					{name: "hot dog", price: 3.50},
+					{name: "pizza", price: 6.00}],
+				dinner: [
+					{name: "steak", price: 15.75},
+					{name: "fish", price: 11.00},
+					{name: "salad", price: 8.25}
+				],
+			};
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>

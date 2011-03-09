@@ -1,0 +1,130 @@
+<html>
+	<head>
+		<style type="text/css">
+			input { width: 75px; }
+			td { width: 75px; }
+			th { color: #666; font-size: .8em; }
+			.buttons { width: 150px; }
+		</style>
+	</head>
+	<body>
+		<table>
+			<tr>
+				<th>Name</th>
+				<th>Quantity</th>
+				<th></th>
+				<th></th>
+			</tr>            
+			<tbody data-bind="template: { name: 'outerItem', foreach: items}"></tbody>
+		</table>
+
+		<script id="outerItem" type="text/html">
+			<tr data-bind="template: templateToUse"></tr>
+		</script>
+
+		<script id="itemTmpl" type="text/html">
+			<td data-bind="text: name"></td>
+			<td data-bind="text: quantity"></td>
+			<td class="buttons">
+				<button data-bind="click: function() { viewModel.editItem($data); }">Edit</button>
+				<button data-bind="click: function() { viewModel.deleteItem($data); }">Delete</button>
+			</td>
+		</script>
+
+		<button data-bind="click: addItem">New Item</button>
+
+		<script id="editTmpl" type="text/html">
+			<td>
+				<input data-bind="value: name" />
+			</td>
+			<td>
+				<input data-bind="value: quantity" />
+			</td>
+			<td class="buttons">
+				<button data-bind="click: function() { viewModel.acceptItemEdit() }">Accept</button>
+				<button data-bind="click: function() { viewModel.cancelItemEdit() }">Cancel</button>
+			</td>
+		</script>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.min.2010.03.04.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.2010.03.04.js"></script>
+		<script type="text/javascript">
+		//wrapper for an observable that protects value until committed
+		ko.protectedObservable = function(initalValue) {
+			//private variables
+			var _temp = initalValue;
+			var _actual = ko.observable(initalValue);
+
+			var result = ko.dependentObservable({
+				read: function() {
+					return _actual();
+				},
+				write: function(newValue) {
+					_temp = newValue;
+				}
+			});
+
+			//commit the temporary value to our observable, if it is different
+			result.commit = function() {
+				if (_temp !== _actual()) {
+					_actual(_temp);
+				}
+			};
+
+			//notify subscribers to update their value with the original
+			result.reset = function() {
+				_actual.valueHasMutated();
+				_temp = _actual();
+			};
+
+			return result;
+		};
+
+		//construct an Item
+		function Item(name, quantity) {
+			this.name = ko.protectedObservable(name);
+			this.quantity = ko.protectedObservable(quantity);
+
+			//select edit template for selected item
+			this.templateToUse = ko.dependentObservable(function() {
+				return viewModel.selectedItem() == this ? "editTmpl" : "itemTmpl";
+			}, this);
+		}
+
+		var viewModel = {
+			selectedItem: ko.observable(),
+			addItem: function() {
+				var newItem = new Item("new item", 0);
+				this.items.push(newItem);
+				this.selectedItem(newItem);
+			},
+			deleteItem: function(itemToDelete) {
+				this.items.remove(itemToDelete);
+				this.selectedItem(null);
+			},
+			editItem: function(item) {
+				this.selectedItem(item);
+			},
+			acceptItemEdit: function() {
+				this.selectedItem().name.commit();
+				this.selectedItem().quantity.commit();
+				this.selectedItem(null);
+			},
+			cancelItemEdit: function() {
+				this.selectedItem().name.reset();
+				this.selectedItem().quantity.reset();
+				this.selectedItem(null);
+			}
+		};
+
+		viewModel.items = ko.observableArray([
+			new Item("one", 1),
+			new Item("two", 2),
+			new Item("three", 3)
+			]);
+
+		ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>

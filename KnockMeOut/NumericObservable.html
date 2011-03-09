@@ -1,0 +1,44 @@
+<html>
+	<head>
+	</head>
+	<body>
+		<label>Bad: </label>
+		<input data-bind="value: units" size="3" />
+		<span data-bind="text: ko.toJSON(units)"></span>
+		<hr/>
+		<label>Good: </label>
+		<input data-bind="value: units2" size="3" />
+		<span data-bind="text: ko.toJSON(units2)"></span>
+		<hr/>
+
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.min.2010.03.04.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.2010.03.04.js"></script>
+		<script type="text/javascript">
+			ko.numericObservable = function(initialValue) {
+				var _actual = ko.observable(initialValue);
+				
+				var result = ko.dependentObservable({
+					read: function() {
+					  return _actual();  
+					},
+					write: function(newValue) {
+					   var parsedValue = parseFloat(newValue);
+						_actual(isNaN(parsedValue ) ? newValue: parsedValue);
+					} 
+				});
+				
+				return result;
+			};
+
+			var viewModel = {
+				units: ko.observable(2.50),
+				units2: ko.numericObservable(2.50)
+			};
+
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>
