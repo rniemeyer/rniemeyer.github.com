@@ -2,6 +2,8 @@
 	<head>
 		<style type="text/css">
 			body { font-family: arial; }
+			span { font-size: .9em }
+			h4 { margin-bottom: 5px; }
 		</style>
 	</head>
 	<body>
@@ -9,7 +11,11 @@
 		<h3>Sample Files</h3>
 		<ul data-bind="template: {name: 'linksTmpl', foreach: links }"></ul>
 		<script id="linksTmpl" type="text/html">
-			<li><a data-bind="attr: { href: url }, text: title"></a><span data-bind="text: description"></span>
+			<li>
+				<h4 data-bind="text: title"></h4>
+				<span>Sample <a data-bind="attr: { href: url }">here</a>.</span>
+				<span>Original post <a data-bind="attr: { href: link }">here</a>.</span>
+			</li>
 		</script>
 
 		
@@ -17,18 +23,19 @@
 		<script type="text/javascript" src="KnockMeOut/Scripts/jquery.tmpl.min.2010.03.04.js"></script>
 		<script type="text/javascript" src="KnockMeOut/Scripts/knockout-latest.2010.03.04.js"></script>
 		<script type="text/javascript">
-			function Link(url, title, description) {
+			function Link(url, title, link) {
 				this.url = url;
 				this.title = title;
-				this.description = description;
+				this.link = link;
 			}
 			
 			var viewModel = {
 				links: [
-					new Link("KnockMeOut/DynamicTemplateName.html", "Dynamically Changing Templates",""),
-					new Link("KnockMeOut/PassingTemplateOptions.html", "Passing Template Options",""),
-					new Link("KnockMeOut/ProtectedObservables.html", "Guard Your Model with protectedObservables",""),
-					new Link("KnockMeOut/NumericObservable.html", "Force values to numbers with numericObservables","")]
+					new Link("KnockMeOut/DynamicTemplateName.html", "Dynamically changing templates","http://www.knockmeout.net/2011/03/quick-tip-dynamically-changing.html"),
+					new Link("KnockMeOut/PassingTemplateOptions.html", "Passing template options","http://www.knockmeout.net/2011/03/quick-tip-reusing-template-by-passing.html"),
+					new Link("KnockMeOut/ProtectedObservables.html", "Guard your model with protectedObservables","http://www.knockmeout.net/2011/03/guard-your-model-accept-or-cancel-edits.html"),
+					new Link("KnockMeOut/NumericObservable.html", "Force values to numbers with numericObservables","http://www.knockmeout.net/2011/03/guard-your-model-accept-or-cancel-edits.html"),
+					new Link("KnockMeOut/ChoosingTheRightTool.html", "Choosing the right tool to react to changes","http://www.knockmeout.net/2011/03/reacting-to-changes-in-knockoutjs.html")]
 			};
 
 			ko.applyBindings(viewModel);
