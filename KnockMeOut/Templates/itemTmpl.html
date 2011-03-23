@@ -1,0 +1,5 @@
+<td data-bind="text: name"></td>
+<td class="buttons">
+	<button data-bind="click: function() { viewModel.editItem($data); }">Edit</button>
+	<button data-bind="click: function() { viewModel.deleteItem($data); }">Delete</button>
+</td>

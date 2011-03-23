@@ -1,0 +1,33 @@
+<html>
+	<head>
+	</head>
+	<body>
+		<ul data-bind="template: { name: 'basic', foreach: items }"></ul>
+		<a href data-bind="click: addItem">Add Item</a>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.min.2010.03.04.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.2010.03.04.js"></script>
+		<script type="text/javascript">
+			$(function () {
+				loadTemplate("basic");
+			});
+			
+			var viewModel = {
+				items: ko.observableArray([{ name: "one" }, { name: "two" }, { name: "three"}]),
+				addItem: function ()
+				{
+					this.items.push({ name: "new" });
+				}
+			};
+
+			function loadTemplate(name) {
+				$.get("Templates/" + name + ".html", function (template) {
+					$("body").append("<script id=\"" + name + "\" type=\"text/html\">" + template + "<\/script>");
+					ko.applyBindings(viewModel);
+				});
+			};
+
+		</script>
+	</body>
+</html>

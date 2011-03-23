@@ -1,0 +1,125 @@
+<html>
+	<head>
+		<style type="text/css">
+			input { width: 75px; }
+			td { width: 75px; }
+			.buttons { width: 150px; }
+		</style>
+	</head>
+	<body>
+		<table>
+			<tr>
+				<th>Name</th>
+				<th></th>
+				<th></th>
+			</tr>			
+			<tbody data-bind="template: { name: 'outerItem', foreach: items}"></tbody>
+		</table>
+		
+		<button data-bind="click: addItem">New Item</button>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.min.2010.03.04.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.2010.03.04.js"></script>
+		<script type="text/javascript" src="Templates/all.js"></script>
+		
+		<script type="text/javascript">
+			$(function() {
+				ko.applyBindings(viewModel);
+			});
+
+			//wrapper for an observable that supports undo/redo
+			ko.undoableObservable = function (initialValue) {
+				//private variables
+				var _actual = ko.observable(initialValue);
+				var _undos = ko.observableArray([]);
+				var _redos = ko.observableArray([]);
+				
+				var result = ko.dependentObservable({
+					read: function() {
+						return _actual();
+					},
+					write: function(newValue) {
+						_redos([]);
+						_undos.push(_actual());
+						_actual(newValue);
+					}
+				});
+				
+				//expose these flags to allow enabling/disabling buttons
+				result.undoable = ko.dependentObservable(function() {
+					return _undos().length > 0;
+				});
+				
+				result.redoable = ko.dependentObservable(function() {
+					return _redos().length > 0;
+				});
+				
+				//go back to the latest undo value
+				result.undo = function() {
+					if (_undos().length > 0) {
+						var last = _undos.pop();
+						_redos.push(_actual());
+						_actual(last);
+					}
+				};
+				
+				//redo the latest change
+				result.redo = function() {
+					if (_redos().length > 0) {
+						var next = _redos.pop();
+						_undos.push(_actual());
+						_actual(next);
+					}
+				};
+				
+				return result;
+			};
+			
+			function Item(name, quantity) {
+				this.name = ko.undoableObservable(name);
+				
+				//select either the view or edit template depending on whether this item is selected
+				this.templateToUse = ko.dependentObservable(function() {
+					return viewModel.selectedItem() == this ? "editTmpl" : "itemTmpl";
+				}, this);
+			};
+			
+			var viewModel = {
+				selectedItem: ko.observable(),
+				addItem: function() {
+					var newItem = new Item("new item", 0);
+					this.items.push(newItem);
+					this.selectedItem(newItem);
+				},
+				deleteItem: function(itemToDelete) {
+					this.items.remove(itemToDelete);
+					this.selectedItem(null);
+				},
+				editItem: function(item) {
+					this.selectedItem(item);
+				},
+			};
+			
+			viewModel.items = ko.observableArray([
+				new Item("one", 1),
+				new Item("two", 2),
+				new Item("three", 3)
+			]);
+
+			function ensureTemplates(list) {
+				var loadedTemplates = [];
+				ko.utils.arrayForEach(list, function(name) {
+					$.get("Templates/" + name + ".html", function(template) {
+						$("body").append("<script id=\"" + name + "\" type=\"text/html\">" + template + "<\/script>");
+						loadedTemplates.push(name);
+						if (list.length === loadedTemplates.length) {
+							ko.applyBindings(viewModel);
+						}
+					});
+				});
+			}
+
+		</script>
+	</body>
+</html>

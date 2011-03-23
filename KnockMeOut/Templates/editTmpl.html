@@ -1,0 +1,7 @@
+<td>
+	<input data-bind="value: name" />
+</td>
+<td class="buttons">
+	<button data-bind="enable: name.undoable, click: name.undo">Undo</button>
+	<button data-bind="enable: name.redoable, click: name.redo">Redo</button>
+</td>
