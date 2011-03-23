@@ -15,35 +15,35 @@
 				<th></th>
 				<th></th>
 			</tr>            
-			<tbody data-bind="template: { name: 'outerItem', foreach: items}"></tbody>
+			<tbody data-bind="template: { name: templateToUse, foreach: items}"></tbody>
 		</table>
 
-		<script id="outerItem" type="text/html">
-			<tr data-bind="template: templateToUse"></tr>
-		</script>
-
 		<script id="itemTmpl" type="text/html">
-			<td data-bind="text: name"></td>
-			<td data-bind="text: quantity"></td>
-			<td class="buttons">
-				<button data-bind="click: function() { viewModel.editItem($data); }">Edit</button>
-				<button data-bind="click: function() { viewModel.deleteItem($data); }">Delete</button>
-			</td>
+			<tr>
+				<td data-bind="text: name"></td>
+				<td data-bind="text: quantity"></td>
+				<td class="buttons">
+					<button data-bind="click: function() { viewModel.editItem($data); }">Edit</button>
+					<button data-bind="click: function() { viewModel.deleteItem($data); }">Delete</button>
+				</td>
+			</tr>
 		</script>
 
 		<button data-bind="click: addItem">New Item</button>
 
 		<script id="editTmpl" type="text/html">
-			<td>
-				<input data-bind="value: name" />
-			</td>
-			<td>
-				<input data-bind="value: quantity" />
-			</td>
-			<td class="buttons">
-				<button data-bind="click: function() { viewModel.acceptItemEdit() }">Accept</button>
-				<button data-bind="click: function() { viewModel.cancelItemEdit() }">Cancel</button>
-			</td>
+			<tr>
+				<td>
+					<input data-bind="value: name" />
+				</td>
+				<td>
+					<input data-bind="value: quantity" />
+				</td>
+				<td class="buttons">
+					<button data-bind="click: function() { viewModel.acceptItemEdit() }">Accept</button>
+					<button data-bind="click: function() { viewModel.cancelItemEdit() }">Cancel</button>
+				</td>
+			</tr>
 		</script>
 		
 		<script type="text/javascript" src="Scripts/jquery-1.5.min.js"></script>
@@ -85,11 +85,6 @@
 		function Item(name, quantity) {
 			this.name = ko.protectedObservable(name);
 			this.quantity = ko.protectedObservable(quantity);
-
-			//select edit template for selected item
-			this.templateToUse = ko.dependentObservable(function() {
-				return viewModel.selectedItem() == this ? "editTmpl" : "itemTmpl";
-			}, this);
 		}
 
 		var viewModel = {
@@ -115,6 +110,9 @@
 				this.selectedItem().name.reset();
 				this.selectedItem().quantity.reset();
 				this.selectedItem(null);
+			},
+			templateToUse: function(item) {
+				return viewModel.selectedItem() === item ? "editTmpl" : "itemTmpl";
 			}
 		};
 
@@ -122,7 +120,7 @@
 			new Item("one", 1),
 			new Item("two", 2),
 			new Item("three", 3)
-			]);
+		]);
 
 		ko.applyBindings(viewModel);
 		</script>

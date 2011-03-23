@@ -13,7 +13,7 @@
 				<th></th>
 				<th></th>
 			</tr>			
-			<tbody data-bind="template: { name: 'outerItem', foreach: items}"></tbody>
+			<tbody data-bind="template: { name: templateToUse, foreach: items}"></tbody>
 		</table>
 		
 		<button data-bind="click: addItem">New Item</button>
@@ -76,19 +76,15 @@
 				return result;
 			};
 			
-			function Item(name, quantity) {
-				this.name = ko.undoableObservable(name);
-				
-				//select either the view or edit template depending on whether this item is selected
-				this.templateToUse = ko.dependentObservable(function() {
-					return viewModel.selectedItem() == this ? "editTmpl" : "itemTmpl";
-				}, this);
-			};
-			
 			var viewModel = {
+				items: ko.observableArray([
+					{ name: ko.undoableObservable("one") },
+					{ name: ko.undoableObservable("two") },
+					{ name: ko.undoableObservable("three") }
+				]),
 				selectedItem: ko.observable(),
 				addItem: function() {
-					var newItem = new Item("new item", 0);
+					var newItem = ko.undoableObservable("new");
 					this.items.push(newItem);
 					this.selectedItem(newItem);
 				},
@@ -99,6 +95,9 @@
 				editItem: function(item) {
 					this.selectedItem(item);
 				},
+				templateToUse: function(item) {
+					return viewModel.selectedItem() === item ? "editTmpl" : "itemTmpl";
+				}
 			};
 			
 			viewModel.items = ko.observableArray([
