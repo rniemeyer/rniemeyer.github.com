@@ -1,24 +1,3 @@
-$("body").append("\
-<script id=\"editTmpl\" type=\"text/html\">\
-<tr>\
-<td>\
-<input data-bind=\"value: name\" />\
-</td>\
-<td class=\"buttons\">\
-<button data-bind=\"enable: name.undoable, click: name.undo\">Undo</button>\
-<button data-bind=\"enable: name.redoable, click: name.redo\">Redo</button>\
-</td>\
-</tr>\
-</script>\
-");
-$("body").append("\
-<script id=\"itemTmpl\" type=\"text/html\">\
-<tr>\
-<td data-bind=\"text: name\"></td>\
-<td class=\"buttons\">\
-<button data-bind=\"click: function() { viewModel.editItem($data); }\">Edit</button>\
-<button data-bind=\"click: function() { viewModel.deleteItem($data); }\">Delete</button>\
-</td>\
-</tr>\
-</script>\
-");
+jQuery("body").append("<script id=\"basic\" type=\"text/html\"><li data-bind=\"text: name\"></li></script>");
+jQuery("body").append("<script id=\"editTmpl\" type=\"text/html\"><tr>	<td>		<input data-bind=\"value: name\" />	</td>	<td class=\"buttons\">		<button data-bind=\"enable: name.undoable, click: name.undo\">Undo</button>		<button data-bind=\"enable: name.redoable, click: name.redo\">Redo</button>	</td></tr></script>");
+jQuery("body").append("<script id=\"itemTmpl\" type=\"text/html\"><tr>	<td data-bind=\"text: name\"></td>	<td class=\"buttons\">		<button data-bind=\"click: function() { viewModel.editItem($data); }\">Edit</button>		<button data-bind=\"click: function() { viewModel.deleteItem($data); }\">Delete</button>	</td></tr></script>");
