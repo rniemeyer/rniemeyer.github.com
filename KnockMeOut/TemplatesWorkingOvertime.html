@@ -1,0 +1,101 @@
+<html>
+	<head>
+		<style type="text/css">
+			a { font-size: .75em; }
+            h2 { font-size: 1.5em; }
+            h3 { font-size: 1.25em; font-weight: bold; }
+		</style>
+	</head>
+	<body>
+		<div data-bind="template: 'main1'"></div>
+        <script id="main1" type="text/html">
+            {{if items() && items().length > 0}}
+            <div class="items">
+                <h3>Bad {{now}}</h3>
+                <ul data-bind="template: { name: 'itemTmpl', foreach: items }"></ul>
+            </div>
+            {{/if}}
+            <a href="javascript: void(0);" data-bind="click: addItem">Add Item</a>
+        </script>
+        
+        <hr/>
+        
+        <div data-bind="template: 'main2'"></div>
+        <script id="main2" type="text/html">
+            <div data-bind="visible: items().length > 0" class="items">
+                <h3>Solution #1 {{now}}</h3>
+                <ul data-bind="template: { name: 'itemTmpl', foreach: items }"></ul>
+            </div>
+            
+            <a href="javascript: void(0);" data-bind="click: addItem">Add Item</a>
+        </script>
+
+        <hr/>
+
+        <div data-bind="template: 'main3'"></div>
+        <script id="main3" type="text/html">
+            {{if hasItems}}
+            <div class="items">
+                <h3>Solution #2 {{now}}</h3>
+                <ul data-bind="template: { name: 'itemTmpl', foreach: items }"></ul>
+            </div>
+            {{/if}}
+            
+            <a href="javascript: void(0);" data-bind="click: addItem">Add Item</a>
+        </script>
+
+        <script id="itemTmpl" type="text/html">
+            <li><span data-bind="text: name"></span> <a href data-bind="click: function() { viewModel.deleteItem($data); }" > Delete </a> {{now}}</li>
+        </script>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.js"></script>
+		
+		<script type="text/javascript">
+        $(function() {
+            ko.applyBindings(viewModel);
+        });
+
+        var viewModel = {
+            items: ko.observableArray([{
+                id: 1,
+                name: "Pencil"},
+            {
+                id: 2,
+                name: "Pen"},
+            {
+                id: 3,
+                name: "Eraser"}]),
+            addItem: function() {
+                this.items.push({
+                    id: this.items().length + 1,
+                    name: "new"
+                });
+            },
+            deleteItem: function(item) {
+                this.items.remove(item);
+            },
+            hasItems: ko.observable(true)
+        };
+
+        viewModel.hasItems = ko.observable(true);
+
+        //only change hasItems when we cross between 0 and 1 items
+        viewModel.items.subscribe(function() {
+            var current = viewModel.hasItems();
+            var actual = viewModel.items() && viewModel.items().length > 0;
+            if (current != actual) {
+                viewModel.hasItems(actual);
+            }
+        }, viewModel);
+
+        $.extend(jQuery.tmpl.tag, {
+            now: {
+                open: '__=__.concat((" -rendered at: " + (new Date()).toLocaleTimeString()));'
+            },
+        });
+
+		</script>
+	</body>
+</html>

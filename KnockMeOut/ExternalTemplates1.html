@@ -83,7 +83,7 @@
 				]),
 				selectedItem: ko.observable(),
 				addItem: function() {
-					var newItem = ko.undoableObservable("new");
+					var newItem = { name: ko.undoableObservable("new") };
 					this.items.push(newItem);
 					this.selectedItem(newItem);
 				},
