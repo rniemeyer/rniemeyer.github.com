@@ -17,14 +17,14 @@
 			</tr>
 			<tbody data-bind="template: { name: 'itemsTmpl', foreach: items }"></tbody>
 		</table>
-					<a href data-bind="click: addItem">Add Item</a>
+		<a href="javascript: void(0);" data-bind="click: addItem">Add Item</a>
 		<script id="itemsTmpl" type="text/html">
 			<tr>
 				<td>
-					<select data-bind="options: viewModel.productCatalog, optionsText: 'name', value: selectedProduct"></select>
+					<select data-bind="options: viewModel.productCatalog, optionsText: 'name', optionsValue: 'id', value: productId"></select>
 				</td>
 				<td>
-					<input size="4" data-bind="value: price" />
+					<input size="4" data-bind="value: editPrice" />
 				</td>
 				<td>
 					<input size="3" data-bind="value: quantity" />
@@ -32,12 +32,12 @@
 				<td data-bind="fadeInText: total">   
 				</td>
 				<td>
-					<a href data-bind="click: function() { viewModel.removeItem($data) }"> Remove </a>
+					<a href="javascript: void(0);" data-bind="click: function() { viewModel.removeItem($data) }"> Remove </a>
 				</td>
 			</tr>
 		</script>
 		
-		<script type="text/javascript" src="Scripts/jquery-1.5.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
 		<script type="text/javascript" src="Scripts/jquery.tmpl.min.2010.03.04.js"></script>
 		<script type="text/javascript" src="Scripts/knockout-latest.2010.03.04.js"></script>
 		<script type="text/javascript">
@@ -47,29 +47,29 @@
 				this.quantity = ko.observable(quantity);
 				this.productId = ko.observable(productId);
 
-				//dependentObservable to track total
+				//dependentObservable to display total (not internationalized)
 				this.total = ko.dependentObservable(function() {
-					return this.quantity() * this.price();
+					return viewModel.formatCurrency(this.quantity() * this.price());
 				}, this);
 
-				//writable dependentObservable to connect id stored on item to product object array bound to options
-				this.selectedProduct = ko.dependentObservable({
-					//return the actual product object that matches our product id
+				//writable dependentObservable to parse currency input 
+				this.editPrice = ko.dependentObservable({
+					//return a formatted price
 					read: function() {
-						var id = this.productId();
-						return ko.utils.arrayFirst(viewModel.productCatalog, function(product) {
-							return product.id == id;
-						});
+						return viewModel.formatCurrency(this.price());
 					},
-					//if the value changes, the update needs to be to the stored product id on this item
+					//if the value changes, make sure that we store a number back to price
 					write: function(newValue) {
-						this.productId(newValue.id);
+						this.price(viewModel.parseCurrency(newValue));
 					},
 					owner: this
 				});
 
 				//manual subscription to default in the wholesale price whenever the product changes (technically we could do this in the write function of the writeable dependentObservable, but better to keep it focused on reading/writing the single field).
-				this.selectedProduct.subscribe(function(newProduct) {
+				this.productId.subscribe(function(newProductId) {
+					var newProduct = ko.utils.arrayFirst(viewModel.productCatalog, function(product) {
+						return product.id == newProductId;
+					});
 					this.price(newProduct.wholesale);
 				}.bind(this));
 			}
@@ -99,6 +99,15 @@
 				},
 				removeItem: function(itemToRemove) {
 					this.items.remove(itemToRemove);
+				},
+				//not internationalized, for sample purposes
+				formatCurrency: function(value) {
+					return "$" + value.toFixed(2)
+				},
+				//not internationalizedm, for sample purposes
+				parseCurrency: function(value) {
+					var num = parseFloat(value.replace(/[^\d.]+/g, ""))
+					return isNaN(num) ? 0 : num;
 				}
 			};
 
