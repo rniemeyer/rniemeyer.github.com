@@ -1,0 +1,206 @@
+<html>
+	<head>
+		<style type="text/css">
+			body, a, p { font-size: .85em; }
+			input { width: 100px; }
+			table { border: 1px solid black; }
+			h3, p, td, th { padding: 3px; }
+			h3 { font-weight: bold; }
+			.matched { background-color: yellow; }
+			.n { text-align: right; }
+		</style>
+	</head>
+	<body>
+		<h3>1- JSON string from server</h3>
+		<p data-bind="text: JSONdataFromServer"></p>
+
+		<h3>2- Converted to an object with ko.parseJSON</h3>
+		<p data-bind="text: ko.toJSON(dataFromServer)"></p>
+
+		<h3>3- Mapped to use observables and add a dependentObservable</h3>
+		<p data-bind="text: ko.toJSON(mappedData)"></p>
+
+		<hr />
+		<h3>4- Display in an editor</h3>
+
+		<table id="mytable" data-bind="triggerUpdate: items">
+			<thead>
+				<tr>
+					<th>Name</th>
+					<th>Category</th>
+					<th>Price</th>
+					<th>w/Tax</th>
+					<th></th>
+				</tr>
+			</thead>
+			<tbody data-bind="template: { name: 'itemsTmpl', foreach: filteredItems }"></tbody>
+			<script id="itemsTmpl" type="text/html">
+				<tr data-bind="css: { matched: $data === viewModel.firstMatch() }">
+					<td>
+						<input data-bind="value: name" />
+					</td>
+					<td>
+						<select data-bind="options: viewModel.categories, value: category"></select>
+					</td>
+					<td>
+						<input class="n" data-bind="value: price" />
+					</td>
+					<td class="n" data-bind="text: priceWithTax">
+					</td>
+					<td>
+						<a href="javascript: void(0);" data-bind="click: function() { viewModel.removeItem($data); }">Delete</a>
+					</td>
+				</tr>
+			</script>
+			<tr>
+				<td>
+					<a href="javascript: void(0);" data-bind="click: addItem">Add Item</a>
+				</td>
+				<td></td>
+				<td class="n">Total: </td>
+				<td class="n" data-bind="text: total"></td>
+				<td></td>
+			</tr>
+		</table>
+
+		<h3>5- Filter display by name</h3>
+		<p>Filter: <input data-bind="value: filter, valueUpdate: 'afterkeydown'" /></p>
+
+		<h3>6- Find first match by name</h3>
+		<p>Search: <input data-bind="value: search, valueUpdate: 'afterkeydown'" /></p>
+		<hr />
+
+		<h3>7- Use ko.utils.arrayMap to build an array with just categories used</h3>
+		<p data-bind="text: ko.toJSON(viewModel.justCategories)"></p>
+
+		<h3>8- Use ko.utils.arrayGetDistinctValues to get just the unique categories used</h3>
+		<p data-bind="text: ko.toJSON(viewModel.uniqueCategories)"></p>
+
+		<h3>9- Use ko.utils.compareArrays to find available categories that haven't been used</h3>
+		<p data-bind="text: ko.toJSON(viewModel.missingCategories)"></p>
+
+		<h3>10- Convert items to JSON</h3>
+		<p data-bind="text: ko.toJSON(viewModel.items)"></p>
+
+		<h3>11- Map items to send back to server and convert to JSON</h3>
+		<p data-bind="text: ko.toJSON(viewModel.mappedItems)"></p>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			function Item(name, category, price) {
+				this.name = ko.observable(name);
+				this.category = ko.observable(category);
+				this.price = ko.observable(price);
+				this.priceWithTax = ko.dependentObservable(function() {
+					return (this.price() * 1.05).toFixed(2);
+				}, this);
+			}
+
+			var viewModel = {
+				categories: ["Bread", "Dairy", "Fruits", "Vegetables"],
+				items: ko.observableArray([]),
+				filter: ko.observable(""),
+				search: ko.observable(""),
+				addItem: function() {
+					this.items.push(new Item("New", "", 1));
+				},
+				removeItem: function(item) {
+					this.items.remove(item);
+				}
+			};
+
+			//ko.utils.arrayFilter - filter the items using the filter text
+			viewModel.filteredItems = ko.dependentObservable(function() {
+				var filter = this.filter().toLowerCase();
+				if (!filter) {
+					return this.items();
+				} else {
+					return ko.utils.arrayFilter(this.items(), function(item) {
+						return ko.utils.stringStartsWith(item.name().toLowerCase(), filter);
+					});
+				}
+			}, viewModel);
+
+
+			//ko.utils.arrayForEach - return a total by adding all prices
+			viewModel.total = ko.dependentObservable(function() {
+				var total = 0;
+				ko.utils.arrayForEach(this.filteredItems(), function(item) {
+					var value = parseFloat(item.priceWithTax());
+					if (!isNaN(value)) {
+						total += value;
+					}
+				});
+				return total.toFixed(2);
+			}, viewModel);
+
+
+			//ko.utils.arrayFirst - identify the first matching item by name
+			viewModel.firstMatch = ko.dependentObservable(function() {
+				var search = this.search().toLowerCase();
+				if (!search) {
+					return null;
+				} else {
+					return ko.utils.arrayFirst(this.filteredItems(), function(item) {
+						return ko.utils.stringStartsWith(item.name().toLowerCase(), search);
+					});
+				}
+			}, viewModel);
+
+			//ko.utils.arrayMap - get a list of used categories
+			viewModel.justCategories = ko.dependentObservable(function() {
+				var categories = ko.utils.arrayMap(this.items(), function(item) {
+					return item.category();
+				});
+				return categories.sort();
+			}, viewModel);
+
+			//ko.utils.arrayGetDistinctValues - get a unique list of used categories
+			viewModel.uniqueCategories = ko.dependentObservable(function() {
+				return ko.utils.arrayGetDistinctValues(viewModel.justCategories()).sort();
+			}, viewModel);
+
+			//ko.utils.compareArrays - find any unused categories
+			viewModel.missingCategories = ko.dependentObservable(function() {
+				//find out the categories that are missing from uniqueNames
+				var differences = ko.utils.compareArrays(viewModel.categories, viewModel.uniqueCategories());
+				//return a flat list of differences
+				var results = [];
+				ko.utils.arrayForEach(differences, function(difference) {
+					if (difference.status === "deleted") {
+						results.push(difference.value);
+					}
+				});
+				return results;
+			}, viewModel);
+
+			//ko.utils.arrayMap - prepare items to be sent back to server
+			viewModel.mappedItems = ko.dependentObservable(function() {
+				var items = ko.toJS(this.items);
+				return ko.utils.arrayMap(items, function(item) {
+					delete item.priceWithTax;
+					return item;
+				});
+			}, viewModel);
+
+			//a JSON string that we got from the server that wasn't automatically converted to an object
+			var JSONdataFromServer = '[{"name":"Peach","category":"Fruits","price":1},{"name":"Plum","category":"Fruits","price":0.75},{"name":"Donut","category":"Bread","price":1.5},{"name":"Milk","category":"Dairy","price":4.50}]';
+
+			//parse into an object
+			var dataFromServer = ko.utils.parseJson(JSONdataFromServer);
+
+			//do some basic mapping (without mapping plugin)
+			var mappedData = ko.utils.arrayMap(dataFromServer, function(item) {
+				return new Item(item.name, item.category, item.price);
+			});
+
+			viewModel.items(mappedData);
+
+			ko.applyBindings(viewModel);
+
+		</script>
+	</body>
+</html>
