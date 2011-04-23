@@ -1,0 +1,183 @@
+<html>
+	<head>
+		<style type="text/css">
+			div { height: 20px; }
+			table { border: black solid 1px; }
+			td, th { padding: 1px; text-align: center; }
+		</style>
+	</head>
+	<body>
+		<div data-bind="text: description">
+		</div>
+
+		<table data-bind="template: 'rowsTmpl', delegatedClick: [{callback: 'toggleShowDetails', selector: 'td a' }, { callback: deleteRow, selector: 'button' }]"></table>
+		<script id="rowsTmpl" type="text/html">
+			<thead data-bind="delegatedEvent: [{ event: 'mouseover', callback: setDescription, selector: 'th'}, { event: 'mouseout', callback: clearDescription, selector: 'th'}]">
+				<tr data-bind="template: { name: 'headTmpl', foreach: headers }"><th></th></tr>
+			</thead>
+			<tbody data-bind="template: { name: 'rowTmpl', foreach: rows }"></tbody>
+		</script>
+
+		<script id="rowTmpl" type="text/html">
+			<tr data-bind="template: { name: 'cellTmpl', foreach: cells }">
+				<td><button>Delete</button></td>
+			</tr>
+		</script>
+
+		<script id="headTmpl" type="text/html">
+			<th data-bind="text: name"></th>
+		</script>
+
+		<script id="cellTmpl" type="text/html">
+			<td>
+				<a href="javascript: void(0);" data-bind="text: name"></a> 
+				<div data-bind="visible: showDetails, text: $data"></div>
+			</td>
+		</script>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			function Cell(name, x, y) {
+				this.name = name;
+				this.x = x;
+				this.y = y;
+				this.showDetails = ko.observable(false);
+				this.toggleShowDetails = function() {
+					this.showDetails(!this.showDetails());
+				}.bind(this);
+			}
+
+			Cell.prototype.toString = function() {
+				return "(" + this.x + "," + this.y + ")";
+			}
+
+			var viewModel = {
+				counter: 0,
+				headers: ko.observableArray([]),
+				rows: ko.observableArray([]),
+				deleteRow: function(row) {
+					viewModel.rows.remove(row);
+				},
+				setDescription: function(header) {
+					viewModel.description(header.description);
+				},
+				clearDescription: function() {
+					viewModel.description("");
+				},
+				description: ko.observable("")
+			};
+
+			//setup a 20x20 grid of cells
+			for (var i = 0; i < 15; i++) {
+				var row = {
+					name: i,
+					cells: []
+				};
+				for (var j = 0; j < 15; j++) {
+					row.cells.push(new Cell(viewModel.counter++, i, j));
+				}
+				viewModel.rows.push(row);
+				viewModel.headers.push({
+					name: i,
+					description: "This is a description for column " + i
+				});
+			}
+
+			//binding to do event delegation for any event
+			ko.bindingHandlers.delegatedEvent = {
+				init: function(element, valueAccessor, allBindings, viewModel) {
+					var eventsToHandle = valueAccessor() || {};
+					//if a single event was passed, then convert it to an array
+					if (!$.isArray(eventsToHandle)) {
+						eventsToHandle = [eventsToHandle];
+					}
+					ko.utils.arrayForEach(eventsToHandle, function(eventOptions) {
+						var realCallback = function(event) {
+							var element = event.target;
+							var options = eventOptions;
+							//verify that the element matches our selector
+							if ($(element).is(options.selector)) {
+								//get real context
+								var context = $(event.target).tmplItem().data;
+								//if a string was passed for the function, then assume it is a function of the real context
+								if (typeof options.callback === "string" && typeof context[options.callback] === "function") {
+									return context[options.callback].call(context, event);
+								}
+								//if a function was passed, then give it the real context as a param
+								return options.callback.call(viewModel, context, event);
+							}
+						}
+
+						var realValueAccessor = function() {
+							var result = {};
+							result[eventOptions.event] = realCallback;
+							return result;
+						}
+
+						ko.bindingHandlers.event.init(element, realValueAccessor, allBindings, viewModel);
+					});
+				}
+			};
+
+			//binding to do event delegation for click events
+			ko.bindingHandlers.delegatedClick = {
+				init: function(element, valueAccessor, allBindings, viewModel) {
+					var clicksToHandle = valueAccessor();
+					//if a single event was passed, then convert it to an array
+					if (!$.isArray(clicksToHandle)) {
+						clicksToHandle = [clicksHandle];
+					}
+					ko.utils.arrayMap(clicksToHandle, function(options) {
+						options.event = 'click';
+						return options;
+					});
+
+					var realValueAccessor = function() {
+						return clicksToHandle;
+					}
+
+					ko.bindingHandlers.delegatedEvent.init(element, realValueAccessor, allBindings, viewModel)
+				}
+			}
+				
+			//binding to do event delegation for click events
+			ko.bindingHandlers.delegatedClickLong = {
+				init: function(element, valueAccessor, allBindings, viewModel) {
+					var clicksToHandle = valueAccessor();
+					//if a single event was passed, then convert it to an array
+					if (!$.isArray(clicksToHandle)) {
+						clicksToHandle = [clicksHandle];
+					}
+					ko.utils.arrayForEach(clicksToHandle, function(options) {
+						//build a function that will call our function with the correct context
+						var realValueAccessor = function() {
+							return function(event) {
+								var element = event.target;
+								//verify that the element matches our selector
+								if ($(element).is(options.selector)) {
+									//get real context
+									var context = $(event.target).tmplItem().data;
+									//if a string was passed for the function, then assume it is a function of the real context
+									if (typeof options.callback === "string" && typeof context[options.callback] === "function") {
+										return context[options.callback].call(context, event);
+									}
+									//if a function was passed, then give it the real context as a param
+									return options.callback.call(viewModel, context, event);
+								}
+							}
+						}
+
+						//call real click binding's init    
+						ko.bindingHandlers.click.init(element, realValueAccessor, allBindings, viewModel);
+					});
+				}
+			}
+
+			ko.applyBindings(viewModel);
+
+		</script>
+	</body>
+</html>

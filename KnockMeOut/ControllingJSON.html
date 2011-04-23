@@ -1,0 +1,71 @@
+<html>
+	<head>
+		<style type="text/css">
+			input { width: 75px; }
+		</style>
+	</head>
+	<body>
+		<ul data-bind="template: { name: 'peopleTmpl', foreach: ones}"></ul>
+		<hr/>
+		<div data-bind="text: ko.toJSON(ones)"></div>
+		<hr/>
+		<ul data-bind="template: { name: 'peopleTmpl', foreach: twos}"></ul>
+		<hr/>
+		<div data-bind="text: ko.toJSON(twos)"></div>
+
+		<script id="peopleTmpl" type="text/html">
+			<li>
+				<input data-bind="value: first" />
+				<input data-bind="value: last" />
+				<span data-bind="text: full"></span>
+			</li>
+		</script>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			function PersonOne(first, last) {
+				this.first = ko.observable(first);
+				this.last = ko.observable(last);
+				this.full = ko.dependentObservable(function() {
+					return this.first() + " " + this.last();
+				}, this);
+			}
+
+			PersonOne.prototype.toJSON = function() {
+				var copy = ko.toJS(this); //easy way to get a clean copy
+				delete copy.full; //remove an extra property
+				return copy; //return the copy to be serialized
+			}
+
+			function PersonTwo(first, last) {
+				this.first = ko.observable(first);
+				this.last = ko.observable(last);
+				this.full = ko.dependentObservable(function() {
+					return this.first() + " " + this.last();
+				}, this);
+			}
+				
+			PersonTwo.prototype.toJSON = function() {
+			   return ko.utils.unwrapObservable(this.full);   
+			}
+
+			var viewModel = {
+				ones: [
+					new PersonOne("John", "Smith"),
+					new PersonOne("Sarah", "Smith"),
+					new PersonOne("Ron", "Smith")
+					],
+				twos: [
+					new PersonTwo("Ted", "Johnson"),
+					new PersonTwo("Jon", "Johnson"),
+					new PersonTwo("Rachel", "Johnson")
+					]
+			};
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>

@@ -2,8 +2,8 @@
 	<head>
 		<style type="text/css">
 			body { font-family: arial; }
-			span { font-size: .9em }
-			h4 { margin-bottom: 5px; }
+			span.title { font-size: 1.2em; font-weight: bold; margin-right: 10px; }
+			li { font-size: .9em; margin-bottom: 5px; }
 		</style>
 	</head>
 	<body>
@@ -12,9 +12,8 @@
 		<ul data-bind="template: {name: 'linksTmpl', foreach: links }"></ul>
 		<script id="linksTmpl" type="text/html">
 			<li>
-				<h4 data-bind="text: title"></h4>
-				<span>Sample <a data-bind="attr: { href: url }">here</a>.</span>
-				<span>Original post <a data-bind="attr: { href: link }">here</a>.</span>
+				<span class="title" data-bind="text: title"></span>
+				<a data-bind="attr: { href: url }">Sample</a> / <a data-bind="attr: { href: link }">Original Post</a>
 			</li>
 		</script>
 
@@ -42,7 +41,9 @@
 					new Link("KnockMeOut/ExternalTemplates3.html", "Using external templates - Level 3 - Reference a generated script","http://www.knockmeout.net/2011/03/using-external-jquery-template-files.html"),
                     new Link("KnockMeOut/TemplatesWorkingOvertime.html", "Are your Templates Working Overtime?","http://www.knockmeout.net/2011/03/are-your-templates-working-overtime.html")
 					,
-                    new Link("KnockMeOut/UsefulUtilities.html", "Utility functions in KnockoutJS","http://www.knockmeout.net/2011/04/utility-functions-in-knockoutjs.html")
+                    new Link("KnockMeOut/UsefulUtilities.html", "Utility functions in KnockoutJS","http://www.knockmeout.net/2011/04/utility-functions-in-knockoutjs.html"),
+					new Link("KnockMeOut/EventDelegation.html", "Event delegation in KnockoutJS","http://www.knockmeout.net/2011/04/event-delegation-in-knockoutjs.html"),
+					new Link("KnockMeOut/ControllingJSON.html", "Controlling how objects are converted to JSON","http://www.knockmeout.net/2011/04/controlling-how-object-is-converted-to.html")
 					]
 			};
 
