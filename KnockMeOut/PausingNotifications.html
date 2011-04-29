@@ -1,0 +1,245 @@
+<html>
+	<head>
+		<style type="text/css">
+			td, th { vertical-align: top; border: solid black 1px; padding: 2px; }
+			.active { color: green; }
+		</style>
+	</head>
+	<body>
+		<button data-bind="click: applyUpdates">Update users</button>
+		<hr/>
+		<table>
+			<tr>
+				<th>All Users</th>
+				<th>
+					Active users <br />
+					Re-eval count: <span data-bind="text: activeUsersReevaluatedCount"></span>
+				</th>
+				<th>
+					Active users w/pause <br />
+					Re-eval count: <span data-bind="text: activeUsersWithPause.reevaluatedCount"></span>
+				</th>
+			</tr>
+			<tr>
+				<td data-bind="template: { name: 'usersTmpl', foreach: users }"></td>
+				<td data-bind="template: { name: 'usersTmpl', foreach: activeUsers }"></td>
+				<td data-bind="template: { name: 'usersTmpl', foreach: activeUsersWithPause }"></td>
+			</tr>
+		</table>
+
+		<script id="usersTmpl" type="text/html">
+			<div data-bind="text: name, css: { active: isActive }"></div>
+		</script>
+
+		<hr/>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			function User(id, name) {
+				this.id = ko.observable(id);
+				this.name = ko.observable(name);
+				this.isActive = ko.observable(false);
+			}
+
+			var viewModel = {
+				users: ko.observableArray([
+					new User(1, "Bob"),
+					new User(2, "Ted"),
+					new User(3, "Joan"),
+					new User(4, "Rod"),
+					new User(5, "Rachel"),
+					new User(6, "Greg"),
+					new User(7, "Tim"),
+					new User(8, "Polly"),
+					new User(9, "Paul"),
+					new User(10, "Sally"),
+					new User(11, "Doug"),
+					new User(12, "Cheryl"),
+					new User(13, "Olivia"),
+					new User(14, "Brent"),
+					new User(15, "Todd"),
+					new User(16, "Eve"),
+					new User(17, "Henry"),
+					new User(18, "Zach"),
+					new User(19, "Brian"),
+					new User(20, "Shirley"),
+					new User(21, "Allen"),
+					new User(22, "Anthony"),
+					new User(23, "Wayne"),
+					new User(24, "Brianna"),
+					new User(25, "Randy")
+					]),
+				applyUpdates: function() {
+					this.activeUsersWithPause.pause();
+					ko.utils.arrayForEach(this.users(), function(user) {
+						var num = Math.floor(Math.random() * 2);
+						user.isActive(num > 0);  //could check current status first here, before setting
+					});
+					this.activeUsersWithPause.resume();
+				}
+			};
+
+			//wrapper for a dependentObservable that can pause its subscriptions/notifications
+			ko.pauseableDependentObservable = function(evaluatorFunction, evaluatorFunctionTarget) {
+				var _cachedValue = "";
+				var _isPaused = ko.observable(false);
+
+				var result = ko.dependentObservable(function() {
+					if (!_isPaused()) {
+						return evaluatorFunction.call(evaluatorFunctionTarget);
+					}
+					return _cachedValue;
+				}, evaluatorFunctionTarget);
+
+				//for debug purposes
+				result.reevaluatedCount = ko.observable(0);
+				result.subscribe(function() {
+					this.reevaluatedCount(this.reevaluatedCount() + 1);
+				}, result);
+
+				result.pause = function() {
+					_cachedValue = this();
+					_isPaused(true);
+				}.bind(result);
+
+				result.resume = function() {
+					_cachedValue = "";
+					_isPaused(false);
+				}
+
+				return result;
+			};
+
+
+			//to demonstrate one that gets re-evaluated too many times
+			viewModel.activeUsers = ko.dependentObservable(function() {
+				return ko.utils.arrayFilter(viewModel.users(), function(user) {
+					return user.isActive();
+				});
+			}, viewModel);
+
+			//for debug purposes
+			viewModel.activeUsersReevaluatedCount = ko.observable(0);
+			viewModel.activeUsers.subscribe(function() {
+				this.activeUsersReevaluatedCount(this.activeUsersReevaluatedCount() + 1);
+			}, viewModel);
+
+
+			//same as activeUsers, but with ability to pause/resume
+			viewModel.activeUsersWithPause = ko.pauseableDependentObservable(function() {
+				return ko.utils.arrayFilter(viewModel.users(), function(user) {
+					return user.isActive();
+				});
+			}, viewModel);
+
+
+
+			//----------------------------------------------------------//
+			//Not used, just included as a sample
+			//----------------------------------------------------------//
+			//wrapper for an observable that can pause its notifications
+			ko.pauseableObservable = function(initialValue) {
+				var _actual = ko.observable(initialValue);
+				var _cachedValue = "";
+				var _isPaused = ko.observable(false);
+
+				var result = ko.dependentObservable({
+					read: function() {
+						if (!_isPaused()) {
+							return _actual();
+						} else {
+							return _cachedValue;
+						}
+					},
+					write: function(newValue) {
+						if (!_isPaused()) {
+							_actual(newValue);
+						} else {
+							_cachedValue = newValue;
+						}
+
+					}
+				});
+
+				result.pause = function() {
+					_cachedValue = actual();
+					_isPaused(true);
+				};
+
+				result.resume = function() {
+					_actual(_cachedValue);
+					_cachedValue = "";
+					_isPaused(false);
+				};
+
+				return result;
+			};
+
+			//----------------------------------------------------------//
+			//Not used, just included as a sample
+			//----------------------------------------------------------//
+			//wrapper for a dependentObservable that can support writable DO, as well as normal
+			ko.pauseableWritableDependentObservable = function(evaluatorFunction, evaluatorFunctionTarget, options) {
+				//private variables
+				var _cachedRead = "";
+				var _cachedWrite = "";
+				var _cachedWriteChanged = false;
+				var _isPaused = ko.observable(false);
+
+				//handle writeable and normal dependentObservables
+				if (evaluatorFunction && typeof evaluatorFunction == "object") {
+					options = evaluatorFunction;
+				} else {
+					options = options || {};
+					options.read = evaluatorFunction || options.read;
+				}
+
+				options.owner = evaluatorFunctionTarget || options.owner;
+
+				var originalRead = options.read;
+				options.read = function() {
+					if (!_isPaused()) {
+						return originalRead.call(options.owner);
+					}
+					return _cachedRead;
+				}
+
+				if (options.write) {
+					var originalWrite = options.write;
+					options.write = function(newValue) {
+						if (!_isPaused()) {
+							originalWrite.call(options.owner, newValue);
+						} else {
+							_cachedWrite = newValue;
+							_cachedWriteChanged = true;
+						}
+					}
+				};
+
+				var result = ko.dependentObservable(options);
+
+				result.pause = function() {
+					_cachedRead = this();
+					_isPaused(true);
+				}.bind(result);
+
+				result.resume = function() {
+					_cachedRead = "";
+					_isPaused(false);
+					if (_cachedWriteChanged) {
+						this(_cachedWrite);
+						_cachedWrite = "";
+						_cachedWriteChanged = false;
+					}
+				}.bind(result);
+
+				return result;
+			};
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>
