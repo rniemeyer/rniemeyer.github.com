@@ -2,13 +2,13 @@
 	<head>
 		<style type="text/css">
 			body { font-family: arial; }
-			h2 { font-weight: bold; }
+			h3 { font-weight: bold; }
 			div {  padding: 5px; border: black 1px solid; }
 			p, a { font-size: .8em; }
 			ul { padding-bottom: 10px; }
 			li { padding: 2px; }
 			.container {  width: 125px; min-height: 50px; background-color: #AAA;}
-			.item { background-color: #DDD; cursor: move; }
+			.item { background-color: #DDD; cursor: move; margin: 5px; }
 			.item input { width: 100px; }
 			#main { float: left; width: 150px; }
 			#results { margin-left: 175px; width: 150px; }
@@ -16,7 +16,7 @@
 	</head>
 	<body>
 		<div id="main">
-			<h2>Tasks</h2>
+			<h3>Tasks</h3>
 			<div class="container" data-bind="template: { name: 'taskTmpl', foreach: tasks}, sortableList: tasks"></div>
 			<hr />
 			<a href="#" data-bind="click: addTask">Add Task</a>
@@ -31,7 +31,7 @@
 		</div>    
 
 		<div id="results">
-			<h2>Tasks</h2> 
+			<h3>Tasks</h3> 
 			<ul data-bind="template: { name: 'resultTmpl', foreach: tasks }"></ul>
 		</div>
 
