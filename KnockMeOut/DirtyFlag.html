@@ -1,0 +1,104 @@
+<html>
+	<head>
+		<style type="text/css">
+			li { padding: 2px; margin: 2px; }
+			input { width: 75px; }
+			.dirty { border: solid yellow 2px; }
+		</style>
+	</head>
+	<body>
+		<ul data-bind="template: { name: 'itemsTmpl', foreach: items }"></ul>
+
+		<script id="itemsTmpl" type="text/html">
+			<li data-bind="css: { dirty: dirtyFlag.isDirty }">
+				<span data-bind="text: id"></span>
+				<input data-bind="value: name" />
+				<button data-bind="click: dirtyFlag.reset">Reset</button>
+			</li>
+		</script>
+		<button data-bind="enable: isDirty, click: save">Save</button>
+		<hr />
+		<h3>Just Dirty Items</h3>
+		<div data-bind="text: ko.toJSON(dirtyItems)"></div>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			//not used in this example.  one time flag, that drops its subscriptions after the first change.
+			ko.basicDirtyFlag = function(root) {
+				var _isDirty = ko.observable(false);
+
+				var result = ko.dependentObservable(function() {
+					if (!_isDirty()) {
+						ko.toJS(root); //just for subscriptions
+					}
+
+					return _isDirty();
+				});
+
+				result.subscribe(function() {
+					if (!_isDirty()) {
+						_isDirty(true);
+					}
+				});
+
+				return result;
+			}
+
+			ko.dirtyFlag = function(root, isInitiallyDirty) {
+				var result = function() {}
+				var _initialState = ko.observable(ko.toJSON(root));
+				var _isInitiallyDirty = ko.observable(isInitiallyDirty);
+
+				result.isDirty = ko.dependentObservable(function() {
+					if (_isInitiallyDirty()) {
+						return true;
+					}
+					var isDirty = _initialState() !== ko.toJSON(root);
+					return isDirty;
+				});
+
+				result.reset = function() {
+					_initialState(ko.toJSON(root));
+					_isInitiallyDirty(false);
+				};
+
+				return result;
+			};
+
+
+			function Item(id, name) {
+				this.id = ko.observable(id);
+				this.name = ko.observable(name);
+				this.dirtyFlag = new ko.dirtyFlag(this);
+			}
+
+			var viewModel = {
+				items: ko.observableArray([
+					new Item(1, "one"),
+					new Item(2, "two"),
+					new Item(3, "three")
+					]),
+				save: function() {
+					alert("Sending changes to server: " + ko.toJSON(this.dirtyItems));  
+				}
+			};
+
+			viewModel.isDirty = ko.dependentObservable(function() {
+				return ko.utils.arrayFirst(this.items(), function(item) {
+					return item.dirtyFlag.isDirty();
+				}) != null;
+			}, viewModel);
+
+			viewModel.dirtyItems = ko.dependentObservable(function() {
+				return ko.utils.arrayFilter(this.items(), function(item) {
+					return item.dirtyFlag.isDirty();
+				});
+			}, viewModel);
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>
