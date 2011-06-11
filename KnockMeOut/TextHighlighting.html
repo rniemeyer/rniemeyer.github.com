@@ -1,0 +1,76 @@
+<html>
+	<head>
+		<style type="text/css">
+			.yellow { background-color: yellow; }
+			.red { background-color: red; color: #ccc; }
+			.black { background-color: #000; color: #fff; }
+			.big { font-size: 1.5em; font-weight: bold; }
+			input { margin: 5px; width: 150px; }
+			p { color: #666; }
+		</style>
+	</head>
+	<body>
+		Highlight: <input data-bind="value: match, valueUpdate: 'afterkeydown'" /> <select data-bind="options: styleChoices, value: style"></select>
+		<p>Enter a new search term or try selecting text below with your mouse</p>
+		<hr />
+		<div data-bind="highlightedText: { text: text, highlight: match, css: style }, selectedText: match"></div>		
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			ko.bindingHandlers.highlightedText = {
+				update: function(element, valueAccessor) {
+					var options = valueAccessor();
+					var value = ko.utils.unwrapObservable(options.text);
+					var search = ko.utils.unwrapObservable(options.highlight);
+					var css = ko.utils.unwrapObservable(options.css); //could be an observable
+					if (options.sanitize) {
+						value = $('<div/>').text(value).html(); //could do this or something similar to escape HTML before replacement, if there is a risk of HTML injection in this value
+					}
+					var replacement = '<span class="' + css + '">' + search + '</span>';
+					element.innerHTML = value.replace(new RegExp(search, 'g'), replacement);
+				}
+			};
+
+			//set a value based on the text that a user selects
+			ko.bindingHandlers.selectedText = {
+				init: function(element, valueAccessor, allBindingsAccessor) {
+					var value = valueAccessor();
+					ko.utils.registerEventHandler(element, 'mouseup', function() {
+						var modelValue = valueAccessor();
+						//get the selected text
+						var selectedText = '';
+						if (window.getSelection) {
+							selectedText = window.getSelection();
+						} else if (document.getSelection) {
+							selectedText = document.getSelection();
+						} else if (document.selection) {
+							selectedText = document.selection.createRange().text;
+						}
+						//only change if something was selected
+						if (selectedText.toString()) {
+							if (ko.isWriteableObservable(modelValue)) {
+								modelValue(selectedText.toString());
+							}
+							else { //handle non-observables
+								var allBindings = allBindingsAccessor();
+								if (allBindings['_ko_property_writers'] && allBindings['_ko_property_writers']['selectedText']) allBindings['_ko_property_writers']['selectedText'](selectedText);
+							}
+						}
+					});
+				}
+			}
+
+			var viewModel = {
+				styleChoices: ["yellow", "red", "black", "big"],
+				style: ko.observable("yellow"),
+				match: ko.observable("ipsum"),
+				text: ko.observable("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut a risus at enim elementum convallis. Vestibulum non felis nec nisl ultrices consequat. Suspendisse quis erat felis. Duis a sapien elit, at commodo quam. Cras tristique ultricies pulvinar. Integer varius tellus a dolor sollicitudin dignissim tempus urna consequat. Mauris feugiat placerat libero. Donec gravida tellus ut orci sagittis dignissim. Nulla sit amet quam sit amet massa commodo mattis eget vel dui. Mauris suscipit mi ac mi tincidunt hendrerit tempus id augue.Cras sapien dolor, tempor non ultricies ac, scelerisque non nunc. Pellentesque volutpat dolor ac nunc sodales tincidunt convallis leo tempus. Ut rhoncus ultrices consequat. Aenean placerat neque a ante mattis sollicitudin. Mauris id lorem eu eros gravida congue. Fusce eget magna lacus, ac congue turpis. Curabitur congue tincidunt lacus, ac lobortis ligula laoreet sit amet. Sed nec felis ac lorem fringilla ullamcorper in in leo. Vestibulum quis gravida massa. Pellentesque elementum tellus quis dolor suscipit id lacinia sapien accumsan. Duis hendrerit interdum dictum. In pharetra quam sed libero dictum sed consectetur neque ullamcorper. Quisque interdum sagittis justo, quis dignissim justo lobortis sodales.Mauris semper cursus placerat. Duis ornare sagittis nibh at facilisis. Duis ultricies commodo turpis nec cursus. Suspendisse eu velit mi. Phasellus vitae enim neque. Ut sit amet enim quis felis facilisis interdum sit amet nec orci. Fusce elementum, metus ut tristique mattis, nisl dolor dictum quam, in vestibulum mauris ipsum ut est. Nulla condimentum fermentum augue, fringilla euismod odio interdum in. Fusce semper vestibulum felis, id molestie dui dignissim in. Donec eget enim et tortor luctus sodales a et orci. In sed posuere lacus. Aliquam vel lectus vel urna ornare consectetur in ac orci. Nunc condimentum sollicitudin ligula, vitae ullamcorper lectus dictum sed. Duis et augue sollicitudin libero sagittis vulputate nec eget turpis. Sed erat nibh, euismod non tincidunt non, euismod non ipsum. Nunc mollis vestibulum nunc. Nulla eu sapien vel massa hendrerit pretium. Nulla non leo turpis.Morbi purus eros, consectetur sit amet auctor consequat, rhoncus sit amet purus. Fusce mi arcu, tincidunt ac bibendum at, aliquet in risus. Pellentesque lacus sem, viverra eget suscipit sed, lacinia eget neque. Aenean sed dui ac arcu varius sollicitudin. Mauris posuere, libero eu placerat consectetur, justo massa rutrum nisi, nec elementum quam lacus a purus. Suspendisse nec erat ornare dui consectetur lobortis. Vestibulum tincidunt condimentum tortor non tempor. Nunc id ullamcorper metus. Mauris enim turpis, venenatis et molestie id, tempor a justo. Quisque eget velit erat, eu aliquet enim. Aliquam erat volutpat.Curabitur vitae augue eros. Nunc eu enim imperdiet enim convallis dignissim vitae sit amet enim. Nullam nunc nunc, porttitor in lobortis ut, vestibulum ac massa. Phasellus sem arcu, pretium quis malesuada iaculis, tempor ut mi. Etiam pretium lorem at nisi aliquet a varius enim blandit. Donec porta ornare leo, eu sollicitudin felis faucibus a. Proin vel est auctor libero varius interdum. Cras lobortis dapibus commodo. Nunc at erat mauris. Morbi posuere, nisl ut pulvinar consequat, purus lorem faucibus lectus, non condimentum mi orci in orci. Maecenas fringilla dapibus dignissim. Nunc porta eleifend dui ut luctus. Aliquam erat volutpat. Integer vitae suscipit sem. Sed dui tellus, mollis quis cursus a, porta sed quam."),
+			};
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>
