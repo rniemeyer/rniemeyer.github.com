@@ -1,0 +1,115 @@
+<html>
+	<head>
+		<style type="text/css">
+			li { display: inline; margin: 5px; }
+			img { margin: 2px; }
+			.stale { color: #666; }
+			.selected { font-weight: bold; }
+		</style>
+	</head>
+	<body>
+		<ul data-bind="template: { name: 'tabsTmpl', foreach: tabs }"></ul>
+
+		<script id="tabsTmpl" type="text/html">
+			<li data-bind="css: { selected: viewModel.selectedTab() === $data }">
+				<a href="#" data-bind="text: name, click: function() { viewModel.showDetails($data) }"></a>
+			</li>
+		</script>
+
+		<hr />
+		<div data-bind="template: { name: 'detailsTmpl', data: selectedTab }"></div>
+
+		<script id="detailsTmpl" type="text/html">
+			<p>
+				<img src="http://rniemeyer.github.com/KnockMeOut/Images/loading.gif" data-bind="visible: !details.loaded()"  />
+				<a href="#" data-bind="visible: details.loaded, click: details.refresh"><img src="http://rniemeyer.github.com/KnockMeOut/Images/refresh.png" /></a>
+				<span data-bind="text: details, css: { stale: !details.loaded() }"></span>   
+			</p>
+			
+		</script>
+		
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			var fakeText = " - lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec ut tempus lorem. Etiam laoreet volutpat viverra. Vestibulum non nunc eu justo adipiscing rhoncus et eget leo. Ut tincidunt, orci a tristique aliquet, ipsum leo rutrum nisi, ac scelerisque leo magna quis justo. In quis lacus a tortor lacinia euismod et ut lectus. Quisque suscipit iaculis lacus. Pellentesque varius volutpat lacus, ac semper arcu porttitor sit amet. In feugiat pharetra laoreet. Nam condimentum gravida suscipit. Pellentesque ac lectus nec elit aliquam lobortis in sit amet massa.";
+
+			//an observable that retrieves its value when first bound
+			ko.onDemandObservable = function(callback, target) {
+				var _value = ko.observable();  //private observable
+
+				var result = ko.dependentObservable({
+					read: function() {
+						//if it has not been loaded, execute the supplied function
+						if (!result.loaded()) {
+							callback.call(target);
+						}
+						//always return the current value
+						return _value();
+					},
+					write: function(newValue) {
+						//indicate that the value is now loaded and set it
+						result.loaded(true);
+						_value(newValue);
+					},
+					deferEvaluation: true  //do not evaluate immediately when created
+				});
+
+				//expose the current state, which can be bound against
+				result.loaded = ko.observable();  
+				//load it again
+				result.refresh = function() {
+					result.loaded(false);
+				};
+
+				return result;
+			};
+
+
+			function Tab(id, name) {
+				this.id = id;
+				this.name = ko.observable(name);
+				//sample of using an on-demand observable here
+				this.details = ko.onDemandObservable(this.getDetails, this);
+			}
+
+			Tab.prototype.getDetails = function() {
+				$.ajax({
+					type: 'POST',
+					url: '/echo/json/',
+					data: {
+						json: ko.toJSON({
+							details: new Date().toLocaleTimeString() + " " + this.name() + fakeText
+						}),
+						delay: 1
+					},
+					context: this,
+					success: function(data) {
+						this.details(data.details);
+					},
+					dataType: 'json'
+				});
+			};
+
+			var viewModel = {
+				tabs: ko.observableArray([
+					new Tab(1, "Tab One"),
+					new Tab(2, "Tab Two"),
+					new Tab(3, "Tab Three")
+					]),
+				showDetails: function(tab) {
+					this.selectedTab(tab);
+				},
+				selectedTab: ko.observable()
+			};
+
+			//select the first tab
+			viewModel.selectedTab(viewModel.tabs()[0]);
+			//suppose that we already loaded the first tab's details, we can set it directly to avoid the AJAX call
+			viewModel.tabs()[0].details(new Date().toLocaleTimeString() + " " + "Tab One" + fakeText);
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>
