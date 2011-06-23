@@ -76,8 +76,7 @@
 
 			Tab.prototype.getDetails = function() {
 				$.ajax({
-					type: 'POST',
-					url: 'http://fiddle.jshell.net/echo/json/',
+					url: 'http://jsfiddle.net/echo/jsonp/?callback=?',
 					data: {
 						json: ko.toJSON({
 							details: new Date().toLocaleTimeString() + " " + this.name() + fakeText
@@ -86,12 +85,13 @@
 					},
 					context: this,
 					success: function(data) {
-						this.details(data.details);
+						var result = ko.utils.parseJson(data.json);
+						this.details(result ? result.details : 'none');
 					},
 					dataType: 'json'
 				});
 			};
-
+			
 			var viewModel = {
 				tabs: ko.observableArray([
 					new Tab(1, "Tab One"),
