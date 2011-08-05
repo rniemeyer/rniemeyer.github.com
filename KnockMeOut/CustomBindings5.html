@@ -1,0 +1,56 @@
+<html>
+	<head>
+		<link rel="stylesheet" type="text/css" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.14/themes/base/jquery-ui.css"> 
+	</head>
+	<body>
+		<input data-bind="datepicker: myDate, datepickerOptions: { minDate: new Date() }" />
+
+		<hr />
+
+		<button data-bind="click: setToCurrentDate">Set To Current Date</button>
+
+		<hr />
+
+		<div data-bind="text: myDate"></div>
+
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery-ui.min.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			ko.bindingHandlers.datepicker = {
+				init: function(element, valueAccessor, allBindingsAccessor) {
+					//initialize datepicker with some optional options
+					var options = allBindingsAccessor().datepickerOptions || {};
+					$(element).datepicker(options);
+					  
+					//handle the field changing
+					ko.utils.registerEventHandler(element, "change", function () {
+						var observable = valueAccessor();
+						observable($(element).datepicker("getDate"));
+					});
+					
+					//handle disposal (if KO removes by the template binding)
+					ko.utils.domNodeDisposal.addDisposeCallback(element, function() {
+						$(element).datepicker("destroy");
+					});
+				
+				},
+				//update the control when the view model changes
+				update: function(element, valueAccessor) {
+					var value = ko.utils.unwrapObservable(valueAccessor());
+					$(element).datepicker("setDate", value);        
+				}
+			};
+
+			var viewModel = {
+				myDate: ko.observable(new Date("11/01/2011")),
+				setToCurrentDate: function() {
+				   this.myDate(new Date());   
+				}
+			};
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>

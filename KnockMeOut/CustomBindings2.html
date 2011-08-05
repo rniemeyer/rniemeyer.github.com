@@ -1,0 +1,35 @@
+<html>
+	<head>
+		<style type="text/css">
+			h2 { font-weight: bold; }
+			.main { background-color: #CCC; }
+		</style>
+	</head>
+	<body>
+		<div class="main" data-bind="flash: name">
+			<h2>Name</h2>
+			<span data-bind="text: name"></span>
+		</div>
+
+		<hr />
+
+		<input data-bind="value: name" />
+
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			ko.bindingHandlers.flash= {
+				update: function(element, valueAccessor) {
+					ko.utils.unwrapObservable(valueAccessor());  //unwrap to get subscription
+					$(element).hide().fadeIn(500);
+				}  
+			}
+			var viewModel = {
+				name: ko.observable("Bob")
+			};
+
+			ko.applyBindings(viewModel);
+		</script>
+	</body>
+</html>

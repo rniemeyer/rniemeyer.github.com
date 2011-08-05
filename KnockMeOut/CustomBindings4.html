@@ -1,0 +1,57 @@
+<html>
+	<head>
+	</head>
+	<body>
+		<ul data-bind="template: { name: 'itemTmpl', foreach: items, templateOptions: { select: selectItem } }"></ul>
+
+		<script id="itemTmpl" type="text/html">
+			<li>
+				<span data-bind="text: name"></span>
+				<a href="#" data-bind="clickWithParams: { action: $item.select, params: [ $data ] }">select</a>
+			</li>
+		</script>
+
+		<hr/>
+
+		<h2>Selected Item</h2>
+		<div data-bind="text: selectedItem() ? selectedItem().name : 'none'"></div>
+
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/jquery.tmpl.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			ko.bindingHandlers.clickWithParams = {
+				init: function(element, valueAccessor, allBindingsAccessor, context) {
+					var options = valueAccessor();
+					var newValueAccessor = function() {
+						return function() {
+							options.action.apply(context, options.params);
+						};
+					};
+					ko.bindingHandlers.click.init(element, newValueAccessor, allBindingsAccessor, context);
+				}
+			};
+
+			function Item(id, name, selected) {
+				this.id = ko.observable(id);
+				this.name = ko.observable(name);
+			}
+
+			$(function() {
+				var viewModel = {
+					selectedItem: ko.observable(),
+					items: ko.observableArray([new Item(1, "one"), new Item(2, "two"), new Item(3, "three")])
+				};
+
+				viewModel.selectItem = function(item) {
+					this.selectedItem(item);
+				}.bind(viewModel);
+
+				ko.applyBindings(viewModel);
+
+			});
+
+		</script>
+	</body>
+</html>

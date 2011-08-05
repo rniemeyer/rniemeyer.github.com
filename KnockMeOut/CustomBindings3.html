@@ -1,0 +1,29 @@
+<html>
+	<head>
+	</head>
+	<body>
+		<input data-bind="value: name" />
+		<hr/>
+		<div data-bind="fadeInText: name"></div>
+
+		<script type="text/javascript" src="Scripts/jquery-1.5.2.min.js"></script>
+		<script type="text/javascript" src="Scripts/knockout-latest.debug.js"></script>
+		
+		<script type="text/javascript">
+			ko.bindingHandlers.fadeInText = {
+				update: function(element, valueAccessor) {
+					$(element).hide();
+					ko.bindingHandlers.text.update(element, valueAccessor);
+					$(element).fadeIn(); 
+				} 
+			};
+
+			var viewModel = {
+				name: ko.observable("Bob")
+			};
+
+			ko.applyBindings(viewModel);
+
+		</script>
+	</body>
+</html>
