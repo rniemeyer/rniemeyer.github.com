@@ -1739,8 +1739,7 @@ ko.bindingHandlers['with'] = {
         return function() { var value = valueAccessor(); return { 'if': value, data: value, templateEngine: ko.nativeTemplateEngine.instance }; };
     },
     'init': function(element, valueAccessor, allBindingsAccessor, viewModel) {
-        return ko.bindingHandlers['template']['init'](element, ko.bindingHandlers['with'].
-alueAccessor(valueAccessor));
+        return ko.bindingHandlers['template']['init'](element, ko.bindingHandlers['with'].makeTemplateValueAccessor(valueAccessor));
     },
     'update': function(element, valueAccessor, allBindingsAccessor, viewModel) {
         return ko.bindingHandlers['template']['update'](element, ko.bindingHandlers['with'].makeTemplateValueAccessor(valueAccessor), allBindingsAccessor, viewModel);
