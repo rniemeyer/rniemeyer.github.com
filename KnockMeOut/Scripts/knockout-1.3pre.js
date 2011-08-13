@@ -1736,10 +1736,11 @@ ko.bindingHandlers['attr'] = {
 // "with: someExpression" is equivalent to "template: { if: someExpression, data: someExpression }"
 ko.bindingHandlers['with'] = {
     makeTemplateValueAccessor: function(valueAccessor) {
-        return function() { var value = valueAccessor(); return { if: value, data: value, templateEngine: ko.nativeTemplateEngine.instance } };
+        return function() { var value = valueAccessor(); return { 'if': value, data: value, templateEngine: ko.nativeTemplateEngine.instance }; };
     },
     'init': function(element, valueAccessor, allBindingsAccessor, viewModel) {
-        return ko.bindingHandlers['template']['init'](element, ko.bindingHandlers['with'].makeTemplateValueAccessor(valueAccessor));
+        return ko.bindingHandlers['template']['init'](element, ko.bindingHandlers['with'].
+alueAccessor(valueAccessor));
     },
     'update': function(element, valueAccessor, allBindingsAccessor, viewModel) {
         return ko.bindingHandlers['template']['update'](element, ko.bindingHandlers['with'].makeTemplateValueAccessor(valueAccessor), allBindingsAccessor, viewModel);
@@ -1749,7 +1750,7 @@ ko.bindingHandlers['with'] = {
 // "if: someExpression" is equivalent to "template: { if: someExpression, data: viewModel }"
 ko.bindingHandlers['if'] = {
     makeTemplateValueAccessor: function(valueAccessor, viewModel) {
-        return function() { return { if: valueAccessor(), data: viewModel, templateEngine: ko.nativeTemplateEngine.instance } };
+        return function() { return { 'if': valueAccessor(), data: viewModel, templateEngine: ko.nativeTemplateEngine.instance }; };
     },	
     'init': function(element, valueAccessor, allBindingsAccessor, viewModel) {
         return ko.bindingHandlers['template']['init'](element, ko.bindingHandlers['if'].makeTemplateValueAccessor(valueAccessor, viewModel));
