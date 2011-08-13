@@ -149,7 +149,7 @@ ko.utils = new (function () {
                 if (scopes[i] && typeof scopes[i] == "object")
                     functionBody = "with(sc[" + i + "]) { " + functionBody + " } ";
             }
-            return (new Function("sc", functionBody)).call(scopes[0] || window, scopes);
+            return (new Function("sc", functionBody))(scopes);
         },
 
         domNodeIsContainedBy: function (node, containedByNode) {
@@ -1199,10 +1199,27 @@ ko.jsonExpressionRewriting = (function () {
 ko.exportSymbol('ko.jsonExpressionRewriting', ko.jsonExpressionRewriting);
 ko.exportSymbol('ko.jsonExpressionRewriting.parseJson', ko.jsonExpressionRewriting.parseJson);
 ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson);
-
 (function () {
     var defaultBindingAttributeName = "data-bind";
     ko.bindingHandlers = {};
+
+    function bindingContext(dataItem, parentBindingContext) {
+        this['$data'] = dataItem;
+        if (parentBindingContext) {
+            this['$parent'] = parentBindingContext['$data'];
+            this['$parents'] = parentBindingContext['$parents'] || [];
+            this['$parents'].unshift(this['$parent']);
+            this['$root'] = parentBindingContext['$root'];
+        } else {
+            this['$parents'] = [];
+            this['$root'] = dataItem;        	
+        }
+    }
+    bindingContext.prototype = {
+        createChildContext: function (dataItem) {
+            return new bindingContext(dataItem, this);
+        }
+    };
 
     function parseBindingAttribute(attributeText, viewModel, extraScope) {
         try {
@@ -1213,27 +1230,32 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
         }
     }
 
-    function applyBindingsToDescendantsInternal (viewModel, nodeVerified, options) {
+    function applyBindingsToDescendantsInternal (viewModel, nodeVerified) {
         var child;
         for (var i = 0; child = nodeVerified.childNodes[i]; i++) {
             if (child.nodeType === 1)
-                applyBindingsToNodeAndDescendantsInternal(viewModel, child, options);
+                applyBindingsToNodeAndDescendantsInternal(viewModel, child);
         }       	
     }
     
-    function applyBindingsToNodeAndDescendantsInternal (viewModel, nodeVerified, options) {
+    function applyBindingsToNodeAndDescendantsInternal (viewModel, nodeVerified) {
         var shouldBindDescendants = true;
         if (nodeVerified.getAttribute(defaultBindingAttributeName))
-            shouldBindDescendants = ko.applyBindingsToNode(nodeVerified, null, viewModel, options).shouldBindDescendants;
+            shouldBindDescendants = applyBindingsToNodeInternal(nodeVerified, null, viewModel).shouldBindDescendants;
             
         if (shouldBindDescendants)
-            applyBindingsToDescendantsInternal(viewModel, nodeVerified, options);
+            applyBindingsToDescendantsInternal(viewModel, nodeVerified);
     }    
 
-    ko.applyBindingsToNode = function (node, bindings, viewModel, options) {
-        options = options || {};
+    function applyBindingsToNodeInternal (node, bindings, viewModelOrBindingContext) {
+        // Ensure we have a nonnull binding context to work with
+        var bindingContextInstance = viewModelOrBindingContext && (viewModelOrBindingContext instanceof bindingContext)
+            ? viewModelOrBindingContext
+            : new bindingContext(viewModelOrBindingContext);
+        var viewModel = bindingContextInstance['$data'];
+            
         var isFirstEvaluation = true;
-        var bindingAttributeName = options['bindingAttributeName'] || defaultBindingAttributeName;
+        var bindingAttributeName = defaultBindingAttributeName; // Todo: Make this overridable
             
         // Each time the dependentObservable is evaluated (after data changes),
         // the binding attribute is reparsed so that it can pick out the correct
@@ -1249,22 +1271,18 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
             return parsedBindings;
         }
         
-        var optionsPerBinding = {}, bindingHandlerThatControlsDescendantBindings;
+        var bindingHandlerThatControlsDescendantBindings;
         new ko.dependentObservable(
             function () {
                 var evaluatedBindings = (typeof bindings == "function") ? bindings() : bindings;
-                parsedBindings = evaluatedBindings || parseBindingAttribute(node.getAttribute(bindingAttributeName), viewModel, options['extraScope']);
+                parsedBindings = evaluatedBindings || parseBindingAttribute(node.getAttribute(bindingAttributeName), viewModel, bindingContextInstance);
                 
                 // First run all the inits, so bindings can register for notification on changes
                 if (isFirstEvaluation) {
                     for (var bindingKey in parsedBindings) {
-                        optionsPerBinding[bindingKey] = {
-                            'valueAccessor': makeValueAccessor(bindingKey),
-                            'dataStore': {}
-                        };
                         if (ko.bindingHandlers[bindingKey] && typeof ko.bindingHandlers[bindingKey]["init"] == "function") {
                             var handlerInitFn = ko.bindingHandlers[bindingKey]["init"];
-                            var initResult = handlerInitFn(node, optionsPerBinding[bindingKey]['valueAccessor'], parsedBindingsAccessor, viewModel, optionsPerBinding[bindingKey]);
+                            var initResult = handlerInitFn(node, makeValueAccessor(bindingKey), parsedBindingsAccessor, viewModel, bindingContextInstance);
                             
                             // If this binding handler claims to control descendant bindings, make a note of this
                             if (initResult && initResult['controlsDescendantBindings']) {
@@ -1280,7 +1298,7 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
                 for (var bindingKey in parsedBindings) {
                     if (ko.bindingHandlers[bindingKey] && typeof ko.bindingHandlers[bindingKey]["update"] == "function") {
                         var handlerUpdateFn = ko.bindingHandlers[bindingKey]["update"];
-                        handlerUpdateFn(node, optionsPerBinding[bindingKey]['valueAccessor'], parsedBindingsAccessor, viewModel, optionsPerBinding[bindingKey]);
+                        handlerUpdateFn(node, makeValueAccessor(bindingKey), parsedBindingsAccessor, viewModel, bindingContextInstance);
                     }
                 }
             },
@@ -1293,18 +1311,22 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
             shouldBindDescendants: bindingHandlerThatControlsDescendantBindings === undefined
         };
     };
+
+    ko.applyBindingsToNode = function (node, bindings, viewModel) {
+        return applyBindingsToNodeInternal(node, bindings, viewModel);
+    };
     
-    ko.applyBindingsToDescendants = function(viewModel, node, options) {
-        if ((!node) || (node.nodeType !== 1))
+    ko.applyBindingsToDescendants = function(viewModel, rootNode) {
+        if ((!rootNode) || (rootNode.nodeType !== 1))
             throw new Error("ko.applyBindingsToDescendants: first parameter should be your view model; second parameter should be a DOM node");
-        applyBindingsToDescendantsInternal(viewModel, node, options);
+        applyBindingsToDescendantsInternal(viewModel, rootNode);
     };
 
-    ko.applyBindings = function (viewModel, rootNode, options) {
+    ko.applyBindings = function (viewModel, rootNode) {
         if (rootNode && (rootNode.nodeType !== 1))
             throw new Error("ko.applyBindings: first parameter should be your view model; second parameter should be a DOM node");
         rootNode = rootNode || window.document.body; // Make "rootNode" parameter optional
-        applyBindingsToNodeAndDescendantsInternal(viewModel, rootNode, options);
+        applyBindingsToNodeAndDescendantsInternal(viewModel, rootNode);
     };
     
     ko.exportSymbol('ko.bindingHandlers', ko.bindingHandlers);
@@ -1711,70 +1733,71 @@ ko.bindingHandlers['attr'] = {
     }
 };
 
+// "with: someExpression" is equivalent to "template: { if: someExpression, data: someExpression }"
 ko.bindingHandlers['with'] = {
-    'init': function(element, valueAccessor, allBindingsAccessor, viewModel, options) {
-        options['dataStore'].withHtml = element.innerHTML;
-        return { 'controlsDescendantBindings': true }
+    makeTemplateValueAccessor: function(valueAccessor) {
+        return function() { var value = valueAccessor(); return { if: value, data: value, templateEngine: ko.nativeTemplateEngine.instance } };
     },
-    
-    'update': function(element, valueAccessor, allBindingsAccessor, viewModel, options, descendantBindingContext) {
-        ko.utils.emptyDomNode(element);
-        var value = ko.utils.unwrapObservable(valueAccessor());
-        if (value) {
-            ko.utils.setHtml(element, options['dataStore'].withHtml);
-            ko.applyBindingsToDescendants(descendantBindingContext || value, element);
-        }
+    'init': function(element, valueAccessor, allBindingsAccessor, viewModel) {
+        return ko.bindingHandlers['template']['init'](element, ko.bindingHandlers['with'].makeTemplateValueAccessor(valueAccessor));
+    },
+    'update': function(element, valueAccessor, allBindingsAccessor, viewModel) {
+        return ko.bindingHandlers['template']['update'](element, ko.bindingHandlers['with'].makeTemplateValueAccessor(valueAccessor), allBindingsAccessor, viewModel);
     }
 };
 
+// "if: someExpression" is equivalent to "template: { if: someExpression, data: viewModel }"
 ko.bindingHandlers['if'] = {
-    'init': ko.bindingHandlers['with']['init'],
-    'update': function(element, valueAccessor, allBindingsAccessor, viewModel, options) {
-        ko.bindingHandlers['with']['update'](element, valueAccessor, allBindingsAccessor, viewModel, options, viewModel);
+    makeTemplateValueAccessor: function(valueAccessor, viewModel) {
+        return function() { return { if: valueAccessor(), data: viewModel, templateEngine: ko.nativeTemplateEngine.instance } };
+    },	
+    'init': function(element, valueAccessor, allBindingsAccessor, viewModel) {
+        return ko.bindingHandlers['template']['init'](element, ko.bindingHandlers['if'].makeTemplateValueAccessor(valueAccessor, viewModel));
+    },
+    'update': function(element, valueAccessor, allBindingsAccessor, viewModel) {
+        return ko.bindingHandlers['template']['update'](element, ko.bindingHandlers['if'].makeTemplateValueAccessor(valueAccessor, viewModel), allBindingsAccessor, viewModel);
     }
 };
 
-ko.bindingHandlers['foreach'] = {
-    'init': function(element, valueAccessor, allBindingsAccessor, viewModel, options) {
-        options['dataStore'].foreachHtml = element.innerHTML;
-        ko.utils.emptyDomNode(element);
-        return { 'controlsDescendantBindings': true }
+// "ifnot: someExpression" is equivalent to "template: { ifnot: someExpression, data: viewModel }"
+ko.bindingHandlers['ifnot'] = {
+    makeTemplateValueAccessor: function(valueAccessor, viewModel) {
+        return function() { return { ifnot: valueAccessor(), data: viewModel, templateEngine: ko.nativeTemplateEngine.instance } };
+    },	
+    'init': function(element, valueAccessor, allBindingsAccessor, viewModel) {
+        return ko.bindingHandlers['template']['init'](element, ko.bindingHandlers['ifnot'].makeTemplateValueAccessor(valueAccessor, viewModel));
     },
-    
-    'update': function(element, valueAccessor, allBindingsAccessor, viewModel, options, descendantBindingContext) {
-        var bindingValue = ko.utils.unwrapObservable(valueAccessor()), unwrappedArray;
+    'update': function(element, valueAccessor, allBindingsAccessor, viewModel) {
+        return ko.bindingHandlers['template']['update'](element, ko.bindingHandlers['ifnot'].makeTemplateValueAccessor(valueAccessor, viewModel), allBindingsAccessor, viewModel);
+    }
+};
 
-        // Support both "foreach: someArray" and "foreach: { data: someArray }" syntaxes, just like the "template" binding
-        if (bindingValue) {
-            if (typeof bindingValue.length == "number") {
-                unwrappedArray = bindingValue;
-            } else {
-                unwrappedArray = ko.utils.unwrapObservable(bindingValue.data);
-            }
-        }
-
-        // Validate the value and bail out early if necessary
-        if ((unwrappedArray === null) || (unwrappedArray === undefined)) {
-            ko.utils.emptyDomNode(element);
-            return;
-        }
-        if (typeof unwrappedArray.length != "number")
-            throw new Error("The 'foreach' binding can only be used with array-like values");
-        
-        // Filter out any entries marked as destroyed (unless we've been asked not to)
-        var filteredArray = bindingValue['includeDestroyed'] ? unwrappedArray : ko.utils.arrayFilter(unwrappedArray, function(item) { 
-                                                                                    return !item['_destroy'];
-                                                                                });
-        
-        var mapping = function(arrayEntry) {        	
-            var nodeArray = ko.utils.parseHtmlFragment(options['dataStore'].foreachHtml);
-            for (var i = 0, j = nodeArray.length; i < j; i++) {
-                if (nodeArray[i].nodeType == 1)
-                    ko.applyBindings(arrayEntry, nodeArray[i]);
-            }
-            return nodeArray;
+// "foreach: someExpression" is equivalent to "template: { foreach: someExpression }"
+// "foreach: { data: someExpression, afterAdd: myfn }" is equivalent to "template: { foreach: someExpression, afterAdd: myfn }"
+ko.bindingHandlers['foreach'] = {
+    makeTemplateValueAccessor: function(valueAccessor) {
+        return function() { 
+            var bindingValue = ko.utils.unwrapObservable(valueAccessor());
+            
+            // If bindingValue is the array, just pass it on its own
+            if ((!bindingValue) || typeof bindingValue.length == "number")
+                return { foreach: bindingValue, templateEngine: ko.nativeTemplateEngine.instance };
+            
+            // If bindingValue.data is the array, preserve all relevant options
+            return { 
+                foreach: bindingValue.data, 
+                includeDestroyed: bindingValue.includeDestroyed,
+                afterAdd: bindingValue.afterAdd,
+                beforeRemove: bindingValue.beforeRemove, 
+                templateEngine: ko.nativeTemplateEngine.instance
+            };
         };
-        ko.utils.setDomNodeChildrenFromArrayMapping(element, filteredArray, mapping, { 'afterAdd': bindingValue['afterAdd'], 'beforeRemove': bindingValue['beforeRemove'] });
+    },
+    'init': function(element, valueAccessor, allBindingsAccessor, viewModel) {		
+        return ko.bindingHandlers['template']['init'](element, ko.bindingHandlers['foreach'].makeTemplateValueAccessor(valueAccessor));
+    },
+    'update': function(element, valueAccessor, allBindingsAccessor, viewModel) {
+        return ko.bindingHandlers['template']['update'](element, ko.bindingHandlers['foreach'].makeTemplateValueAccessor(valueAccessor), allBindingsAccessor, viewModel);
     }
 };
 ko.templateEngine = function () {
@@ -1832,7 +1855,138 @@ ko.templateRewriting = (function () {
 
 ko.exportSymbol('ko.templateRewriting', ko.templateRewriting);
 ko.exportSymbol('ko.templateRewriting.applyMemoizedBindingsToNextSibling', ko.templateRewriting.applyMemoizedBindingsToNextSibling); // Exported only because it has to be referenced by string lookup from within rewritten template
+(function() { 
+    // A template source represents a read/write way of accessing a template. This is to eliminate the need for template loading/saving
+    // logic to be duplicated in every template engine (and means they can all work with anonymous templates, etc.)
+    //
+    // Two are provided by default:
+    //  1. ko.templateSources.domElement       - reads/writes the text content of an arbitrary DOM element
+    //  2. ko.templateSources.anonymousElement - uses ko.utils.domData to read/write text *associated* with the DOM element, but 
+    //                                           without reading/writing the actual element text content, since it will be overwritten
+    //                                           with the rendered template output.
+    // You can implement your own template source if you want to fetch/store templates somewhere other than in DOM elements.
+    // Template sources need to have the following functions:
+    //   text() 			- returns the template text from your storage location
+    //   text(value)		- writes the supplied template text to your storage location
+    //   data(key)			- reads values stored using data(key, value) - see below
+    //   data(key, value)	- associates "value" with this template and the key "key". Is used to store information like "isRewritten".
+    //
+    // Once you've implemented a templateSource, make your template engine use it by subclassing whatever template engine you were
+    // using and overriding "makeTemplateSource" to return an instance of your custom template source.
+    
+    ko.templateSources = {};
+    
+    // ---- ko.templateSources.domElement -----
+    
+    ko.templateSources.domElement = function(element) {
+        this.domElement = element;
+    }
+    
+    ko.templateSources.domElement.prototype['text'] = function(/* valueToWrite */) {
+        if (arguments.length == 0) {
+            return this.domElement.tagName.toLowerCase() == "script" ? this.domElement.text : this.domElement.innerHTML;
+        } else {
+            var valueToWrite = arguments[0];
+            if (this.domElement.tagName.toLowerCase() == "script")
+                this.domElement.text = valueToWrite;
+            else
+                this.domElement.innerHTML = valueToWrite;
+        }
+    };
+    
+    ko.templateSources.domElement.prototype['data'] = function(key /*, valueToWrite */) {
+        if (arguments.length == 0) {
+            return ko.utils.domData.get(this.domElement, "templateSourceData_" + key);
+        } else {
+            ko.utils.domData.set(this.domElement, "templateSourceData_" + key, arguments[0]);
+        }
+    };
+    
+    // ---- ko.templateSources.anonymousTemplate -----
+    
+    var anonymousTemplatesDomDataKey = "__ko_anon_template__";
+    ko.templateSources.anonymousTemplate = function(element) {		
+        this.domElement = element;
+    }
+    ko.templateSources.anonymousTemplate.prototype = new ko.templateSources.domElement();
+    ko.templateSources.anonymousTemplate.prototype['text'] = function(/* valueToWrite */) {
+        if (arguments.length == 0) {
+            return ko.utils.domData.get(this.domElement, anonymousTemplatesDomDataKey);
+        } else {
+            var valueToWrite = arguments[0];
+            ko.utils.domData.set(this.domElement, anonymousTemplatesDomDataKey, valueToWrite);
+        }
+    };
+    
+    ko.exportSymbol('ko.templateSources', ko.templateSources);
+    ko.exportSymbol('ko.templateSources.domElement', ko.templateSources.domElement);
+    ko.exportSymbol('ko.templateSources.anonymousTemplate', ko.templateSources.anonymousTemplate);
+})();// If you want to make a custom template engine that works with anonymous templates, inherit from 
+// this class instead of inheriting from ko.templateEngine directly.
+//
+// This base class already knows how to work with both named and anonymous templates, plus it handles
+// template rewriting automatically. All you have to do is override the "renderTemplateSource" function
+// and possibly also "createJavaScriptEvaluatorBlock"
+//
+//   renderTemplateSource(templateSource, data, options) - renders the supplied templateSource (see templateSource.js)
+//                                                         and returns an array of DOM elements
+//
+//   createJavaScriptEvaluatorBlock(script) - returns whatever markup your template engine uses to represent an executable
+//                                            block of JavaScript code.
+//                                            This is invoked by KO as part of template rewriting. So, if your template engine
+//                                            allows template rewriting (i.e., if its allowTemplateRewriting property
+//                                            is not strictly false), be sure to override this function.
 
+ko.templateSourceAwareTemplateEngine = function() {
+    this['makeTemplateSource'] = function(template) {
+        // Named template
+        if (typeof template == "string") {
+            var elem = document.getElementById(template);
+            if (!elem)
+                throw new Error("Cannot find template with ID " + template);
+            return new ko.templateSources.domElement(elem);
+        } else if (template.nodeType == 1) {
+            // Anonymous template
+            return new ko.templateSources.anonymousTemplate(template);
+        } else
+            throw new Error("Unrecognised template type: " + template);
+    }
+    
+    this['renderTemplate'] = function (template, data, options) {
+        var templateSource = this['makeTemplateSource'](template);
+        return this['renderTemplateSource'](templateSource, data, options);
+    };
+    this['isTemplateRewritten'] = function (template) {
+        // Skip rewriting if requested
+        if (this['allowTemplateRewriting'] === false)
+            return true;
+        
+        // Perf optimisation - see below
+        if (this.knownRewrittenTemplates && this.knownRewrittenTemplates[template])
+            return true;
+        
+        return this['makeTemplateSource'](template)['data']("isRewritten");
+    };
+    this['rewriteTemplate'] = function (template, rewriterCallback) {
+        var templateSource = this['makeTemplateSource'](template);	    	
+        var rewritten = rewriterCallback(templateSource['text']());
+        templateSource['text'](rewritten);
+        templateSource['data']("isRewritten", true);
+        
+        // Perf optimisation - for named templates, track which ones have been rewritten so we can
+        // answer 'isTemplateRewritten' *without* having to use getElementById (which is slow on IE < 8)
+        if (typeof template == "string") {
+            this.knownRewrittenTemplates = this.knownRewrittenTemplates || {};
+            this.knownRewrittenTemplates[template] = true;            
+        }
+    };
+    this['renderTemplateSource'] = function (templateSource, data, options) {
+        throw "Override renderTemplateSource in your ko.templateSourceAwareTemplateEngine subclass";
+    };    	
+};
+
+ko.templateSourceAwareTemplateEngine.prototype = new ko.templateEngine();
+ko.exportSymbol('ko.templateSourceAwareTemplateEngine', ko.templateSourceAwareTemplateEngine);
 (function () {
     var _templateEngine;
     ko.setTemplateEngine = function (templateEngine) {
@@ -1940,19 +2094,47 @@ ko.exportSymbol('ko.templateRewriting.applyMemoizedBindingsToNextSibling', ko.te
     }
     
     ko.bindingHandlers['template'] = {
+        'init': function(element, valueAccessor) {
+            // Support anonymous templates
+            var bindingValue = ko.utils.unwrapObservable(valueAccessor());
+            if ((typeof bindingValue != "string") && !bindingValue.name) {
+                // It's an anonymous template - store the element contents, then clear the element
+                new ko.templateSources.anonymousTemplate(element).text(element.innerHTML);
+                ko.utils.emptyDomNode(element);
+            }
+            return { 'controlsDescendantBindings': true };
+        },
         'update': function (element, valueAccessor, allBindingsAccessor, viewModel) {
             var bindingValue = ko.utils.unwrapObservable(valueAccessor());
-            var templateName = typeof bindingValue == "string" ? bindingValue : bindingValue.name;
+            var templateName; 
+            var shouldDisplay = true;
             
-            var templateSubscription;
+            if (typeof bindingValue == "string") {
+                templateName = bindingValue;
+            } else {
+                templateName = bindingValue.name;
+                
+                // Support "if"/"ifnot" conditions
+                if ('if' in bindingValue)
+                    shouldDisplay = shouldDisplay && ko.utils.unwrapObservable(bindingValue['if']);
+                if ('ifnot' in bindingValue)
+                    shouldDisplay = shouldDisplay && !ko.utils.unwrapObservable(bindingValue['ifnot']);
+            }    
+            
+            var templateSubscription = null;
+            
             if (typeof bindingValue['foreach'] != "undefined") {
-                // Render once for each data point
-                templateSubscription = ko.renderTemplateForEach(templateName, bindingValue['foreach'] || [], { 'templateOptions': bindingValue['templateOptions'], 'afterAdd': bindingValue['afterAdd'], 'beforeRemove': bindingValue['beforeRemove'], 'includeDestroyed': bindingValue['includeDestroyed'], 'afterRender': bindingValue['afterRender'] }, element);
+                // Render once for each data point (treating data set as empty if shouldDisplay==false)
+                var dataArray = (shouldDisplay && bindingValue['foreach']) || [];
+                templateSubscription = ko.renderTemplateForEach(templateName || element, dataArray, /* options: */ bindingValue, element);
             }
             else {
-                // Render once for this single data point (or use the viewModel if no data was provided)
-                var templateData = bindingValue['data'];
-                templateSubscription = ko.renderTemplate(templateName, typeof templateData == "undefined" ? viewModel : templateData, { 'templateOptions': bindingValue['templateOptions'], 'afterRender': bindingValue['afterRender'] }, element);
+                if (shouldDisplay) {
+                    // Render once for this single data point (or use the viewModel if no data was provided)
+                    var templateData = bindingValue['data'];
+                    templateSubscription = ko.renderTemplate(templateName || element, typeof templateData == "undefined" ? viewModel : templateData, /* options: */ bindingValue, element);
+                } else
+                    ko.utils.emptyDomNode(element);
             }
             
             // It only makes sense to have a single template subscription per element (otherwise which one should have its output displayed?)
@@ -2072,13 +2254,15 @@ ko.exportSymbol('ko.utils.compareArrays', ko.utils.compareArrays);
         }, null, { 'disposeWhenNodeIsRemoved': containerNode, 'disposeWhen': function() { return (mappedNodes.length == 0) || !ko.utils.domNodeIsAttachedToDocument(mappedNodes[0]) } });
         return { mappedNodes : mappedNodes, dependentObservable : dependentObservable };
     }
+    
+    var lastMappingResultDomDataKey = "setDomNodeChildrenFromArrayMapping_lastMappingResult";
 
     ko.utils.setDomNodeChildrenFromArrayMapping = function (domNode, array, mapping, options) {
         // Compare the provided array against the previous one
         array = array || [];
         options = options || {};
-        var isFirstExecution = ko.utils.domData.get(domNode, "setDomNodeChildrenFromArrayMapping_lastMappingResult") === undefined;
-        var lastMappingResult = ko.utils.domData.get(domNode, "setDomNodeChildrenFromArrayMapping_lastMappingResult") || [];
+        var isFirstExecution = ko.utils.domData.get(domNode, lastMappingResultDomDataKey) === undefined;
+        var lastMappingResult = ko.utils.domData.get(domNode, lastMappingResultDomDataKey) || [];
         var lastArray = ko.utils.arrayMap(lastMappingResult, function (x) { return x.arrayEntry; });
         var editScript = ko.utils.compareArrays(lastArray, array);
 
@@ -2168,98 +2352,98 @@ ko.exportSymbol('ko.utils.compareArrays', ko.utils.compareArrays);
             });
 
         // Store a copy of the array items we just considered so we can difference it next time
-        ko.utils.domData.set(domNode, "setDomNodeChildrenFromArrayMapping_lastMappingResult", newMappingResult);
+        ko.utils.domData.set(domNode, lastMappingResultDomDataKey, newMappingResult);
     }
 })();
 
 ko.exportSymbol('ko.utils.setDomNodeChildrenFromArrayMapping', ko.utils.setDomNodeChildrenFromArrayMapping);
-
-ko.jqueryTmplTemplateEngine = function () {
-    // Detect which version of jquery-tmpl you're using. Unfortunately jquery-tmpl 
-    // doesn't expose a version number, so we have to infer it.
-    // Note that as of Knockout 1.3, we only support jQuery.tmpl 1.0.0pre and later,
-    // which KO internally refers to as version "2", so older versions are no longer detected.
-    var jQueryTmplVersion = (function() {      
-        if ((typeof(jQuery) == "undefined") || !jQuery['tmpl'])
-            return 0;
-        // Since it exposes no official version number, we use our own numbering system. To be updated as jquery-tmpl evolves.
-        try {
-            if (jQuery['tmpl']['tag']['tmpl']['open'].toString().indexOf('__') >= 0) {
-                return 2; // Since 1.0.0pre, custom tags should append markup to an array called "__"
-            }        	
-        } catch(ex) { /* Apparently not the version we were looking for */ }
-        
-        return 1; // Any older version that we don't support
-    })();
+ko.nativeTemplateEngine = function () {
+    this['allowTemplateRewriting'] = false;
     
-    function ensureHasReferencedJQueryTemplates() {
-        var errorMessage = jQueryTmplVersion == 0 ? "jquery.tmpl not detected.\nTo use KO's default template engine, reference jQuery and jquery.tmpl. See Knockout installation documentation for more details."
-                         : jQueryTmplVersion == 1 ? "Your version of jQuery.tmpl is too old. Please upgrade to jQuery.tmpl 1.0.0pre or later."
-                         : null;
-        if (errorMessage)
-            throw new Error(errorMessage);
+    this['renderTemplateSource'] = function (templateSource, data, options) {
+        var templateText = templateSource.text();
+        var parsedElems = ko.utils.parseHtmlFragment(templateText);
+        
+        for (var i = 0, j = parsedElems.length; i < j; i++) {
+            if (parsedElems[i].nodeType === 1)
+                ko.applyBindings(data, parsedElems[i]);
+        }
+        
+        return parsedElems;
     }
+}
 
-    this['getTemplateNode'] = function (template) {
-        var templateNode = document.getElementById(template);
-        if (!templateNode)
-            throw new Error("Cannot find template with ID=" + template);
-        return templateNode;
-    }
-    
-    this['renderTemplate'] = function (templateId, data, options) {
-        options = options || {};
-        ensureHasReferencedJQueryTemplates();
+ko.nativeTemplateEngine.prototype = new ko.templateSourceAwareTemplateEngine();
+ko.nativeTemplateEngine.instance = new ko.nativeTemplateEngine();
+ko.setTemplateEngine(ko.nativeTemplateEngine.instance);
+
+ko.exportSymbol('ko.nativeTemplateEngine', ko.nativeTemplateEngine);(function() {
+    ko.jqueryTmplTemplateEngine = function () {
+        // Detect which version of jquery-tmpl you're using. Unfortunately jquery-tmpl 
+        // doesn't expose a version number, so we have to infer it.
+        // Note that as of Knockout 1.3, we only support jQuery.tmpl 1.0.0pre and later,
+        // which KO internally refers to as version "2", so older versions are no longer detected.
+        var jQueryTmplVersion = this.jQueryTmplVersion = (function() {      
+            if ((typeof(jQuery) == "undefined") || !jQuery['tmpl'])
+                return 0;
+            // Since it exposes no official version number, we use our own numbering system. To be updated as jquery-tmpl evolves.
+            try {
+                if (jQuery['tmpl']['tag']['tmpl']['open'].toString().indexOf('__') >= 0) {
+                    return 2; // Since 1.0.0pre, custom tags should append markup to an array called "__"
+                }        	
+            } catch(ex) { /* Apparently not the version we were looking for */ }
+            
+            return 1; // Any older version that we don't support
+        })();
         
-        if (!(templateId in jQuery['template'])) {
-            // Precache a precompiled version of this template (don't want to reparse on every render)
-            var templateText = this['getTemplateNode'](templateId).text;
-            jQuery['template'](templateId, templateText);
-        }        
-        data = [data]; // Prewrap the data in an array to stop jquery.tmpl from trying to unwrap any arrays
+        function ensureHasReferencedJQueryTemplates() {
+            var errorMessage = jQueryTmplVersion == 0 ? "jquery.tmpl not detected.\nTo use KO's default template engine, reference jQuery and jquery.tmpl. See Knockout installation documentation for more details."
+                             : jQueryTmplVersion == 1 ? "Your version of jQuery.tmpl is too old. Please upgrade to jQuery.tmpl 1.0.0pre or later."
+                             : null;
+            if (errorMessage)
+                throw new Error(errorMessage);
+        }
         
-        var resultNodes = jQuery['tmpl'](templateId, data, options['templateOptions']);
-        resultNodes['appendTo'](document.createElement("div")); // Using "appendTo" forces jQuery/jQuery.tmpl to perform necessary cleanup work
-        jQuery['fragments'] = {}; // Clear jQuery's fragment cache to avoid a memory leak after a large number of template renders
-        return resultNodes; 
-    },
-
-    this['isTemplateRewritten'] = function (templateId) {
-        ensureHasReferencedJQueryTemplates.call(this);
-        
-        // It must already be rewritten if we've already got a cached version of it
-        // (this optimisation helps on IE < 9, because it greatly reduces the number of getElementById calls)
-        if (templateId in jQuery['template'])
-            return true;
-        
-        return this['getTemplateNode'](templateId).isRewritten === true;
-    },
-
-    this['rewriteTemplate'] = function (template, rewriterCallback) {
-        var templateNode = this['getTemplateNode'](template);
-        templateNode.text = rewriterCallback(templateNode.text);
-        templateNode.isRewritten = true;
-    },
-
-    this['createJavaScriptEvaluatorBlock'] = function (script) {
-        return "{{ko_code ((function() { return " + script + " })()) }}";
-    },
-
-    this.addTemplate = function (templateName, templateMarkup) {
-        document.write("<script type='text/html' id='" + templateName + "'>" + templateMarkup + "</script>");
-    }
-    ko.exportProperty(this, 'addTemplate', this.addTemplate);
-    
-    if (jQueryTmplVersion >= 2) {
-        jQuery['tmpl']['tag']['ko_code'] = {
-            open: "__.push($1 || '');"
+        this['renderTemplateSource'] = function(templateSource, data, options) {
+            options = options || {};
+            ensureHasReferencedJQueryTemplates();
+            
+            // Ensure we have stored a precompiled version of this template (don't want to reparse on every render)
+            var precompiled = templateSource['data']('precompiled');
+            if (!precompiled) {
+                precompiled = jQuery['template'](null, templateSource.text());
+                templateSource['data']('precompiled', precompiled);
+            }
+            
+            data = [data]; // Prewrap the data in an array to stop jquery.tmpl from trying to unwrap any arrays
+            
+            var resultNodes = jQuery['tmpl'](precompiled, data, options['templateOptions']);
+            resultNodes['appendTo'](document.createElement("div")); // Using "appendTo" forces jQuery/jQuery.tmpl to perform necessary cleanup work
+            jQuery['fragments'] = {}; // Clear jQuery's fragment cache to avoid a memory leak after a large number of template renders
+            return resultNodes;     		
         };
-    }
-};
-
-ko.jqueryTmplTemplateEngine.prototype = new ko.templateEngine();
-
-// Use this one by default
-ko.setTemplateEngine(new ko.jqueryTmplTemplateEngine());
-
-ko.exportSymbol('ko.jqueryTmplTemplateEngine', ko.jqueryTmplTemplateEngine);})(window);                  
+        
+        this['createJavaScriptEvaluatorBlock'] = function(script) {
+            return "{{ko_code ((function() { return " + script + " })()) }}";
+        };
+        
+        this['addTemplate'] = function(templateName, templateMarkup) {
+            document.write("<script type='text/html' id='" + templateName + "'>" + templateMarkup + "</script>");
+        };
+    
+        if (jQueryTmplVersion >= 2) {
+            jQuery['tmpl']['tag']['ko_code'] = {
+                open: "__.push($1 || '');"
+            };
+        }
+    };
+    
+    ko.jqueryTmplTemplateEngine.prototype = new ko.templateSourceAwareTemplateEngine();
+    
+    // Use this one by default *only if jquery.tmpl is referenced*
+    var jqueryTmplTemplateEngineInstance = new ko.jqueryTmplTemplateEngine();
+    if (jqueryTmplTemplateEngineInstance.jQueryTmplVersion > 0)
+        ko.setTemplateEngine(jqueryTmplTemplateEngineInstance);
+    
+    ko.exportSymbol('ko.jqueryTmplTemplateEngine', ko.jqueryTmplTemplateEngine);
+})();})(window);                  
