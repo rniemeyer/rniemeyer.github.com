@@ -250,6 +250,18 @@ ko.utils = new (function () {
             }
         },
 
+        outerHTML: function(node) {
+            // For IE and Chrome
+            var nativeOuterHtml = node.outerHTML;
+            if (typeof nativeOuterHtml == "string")
+                return nativeOuterHtml;
+            
+            // Other browsers
+            var dummyContainer = window.document.createElement("div");
+            dummyContainer.appendChild(node.cloneNode(true));
+            return dummyContainer.innerHTML;
+        },
+
         range: function (min, max) {
             min = ko.utils.unwrapObservable(min);
             max = ko.utils.unwrapObservable(max);
@@ -1199,6 +1211,136 @@ ko.jsonExpressionRewriting = (function () {
 ko.exportSymbol('ko.jsonExpressionRewriting', ko.jsonExpressionRewriting);
 ko.exportSymbol('ko.jsonExpressionRewriting.parseJson', ko.jsonExpressionRewriting.parseJson);
 ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson);
+(function() {
+    // "Virtual elements" is an abstraction on top of the usual DOM API which understands the notion that comment nodes
+    // may be used to represent hierarchy (in addition to the DOM's natural hierarchy). 
+    // If you call the DOM-manipulating functions on ko.virtualElements, you will be able to read and write the state 
+    // of that virtual hierarchy
+    // 
+    // The point of all this is to support containerless templates (e.g., <!-- ko foreach:someCollection -->blah<!-- /ko -->)
+    // without having to scatter special cases all over the binding and templating code.
+
+    var startCommentRegex = /^\s*ko\s+(.*\:.*)\s*$/;
+    var endCommentRegex =   /^\s*\/ko\s*$/;
+
+    function isStartComment(node) {
+        return (node.nodeType == 8) && node.nodeValue.match(startCommentRegex);
+    }
+
+    function isEndComment(node) {
+        return (node.nodeType == 8) && node.nodeValue.match(endCommentRegex);
+    }
+
+    function getVirtualChildren(startComment) {
+        var currentNode = startComment;
+        var depth = 1;
+        var children = [];
+        while (currentNode = currentNode.nextSibling) {
+            if (isEndComment(currentNode)) {
+                depth--;
+                if (depth === 0)
+                    return children;
+            }
+
+            children.push(currentNode);
+
+            if (isStartComment(currentNode))
+                depth++;
+        }
+        throw new Error("Cannot find closing comment tag to match: " + startComment.nodeValue);
+    }
+
+    function getMatchingEndComment(startComment) {
+        var allVirtualChildren = getVirtualChildren(startComment);
+        if (allVirtualChildren.length > 0)
+            return allVirtualChildren[allVirtualChildren.length - 1].nextSibling;
+        return startComment.nextSibling;
+    }
+
+    function nodeArrayToText(nodeArray) {
+        var texts = [];
+        for (var i = 0, j = nodeArray.length; i < j; i++)
+            texts.push(ko.utils.outerHTML(nodeArray[i]));
+        return String.prototype.concat.apply("", texts);
+    }   
+
+    ko.virtualElements = {
+        childNodes: function(node) {
+            return isStartComment(node) ? getVirtualChildren(node) : node.childNodes;
+        },
+
+        emptyNode: function(node) {
+            if (!isStartComment(node))
+                ko.utils.emptyDomNode(node);
+            else {
+                var virtualChildren = ko.virtualElements.childNodes(node);
+                for (var i = 0, j = virtualChildren.length; i < j; i++)
+                    ko.removeNode(virtualChildren[i]);
+            }
+        },
+
+        setDomNodeChildren: function(node, childNodes) {
+            if (!isStartComment(node))
+                ko.utils.setDomNodeChildren(node, childNodes);
+            else {
+                ko.virtualElements.emptyNode(node);
+                var endCommentNode = node.nextSibling; // Must be the next sibling, as we just emptied the children
+                for (var i = 0, j = childNodes.length; i < j; i++)
+                    endCommentNode.parentNode.insertBefore(childNodes[i], endCommentNode);
+            }
+        },
+
+        prepend: function(containerNode, nodeToPrepend) {
+            if (!isStartComment(containerNode)) {
+                if (containerNode.firstChild)
+                    containerNode.insertBefore(nodeToPrepend, containerNode.firstChild);
+                else
+                    containerNode.appendChild(nodeToPrepend);                           
+            } else {
+                // Start comments must always have a parent and at least one following sibling (the end comment)
+                containerNode.parentNode.insertBefore(nodeToPrepend, containerNode.nextSibling);
+            }
+        },
+
+        insertAfter: function(containerNode, nodeToInsert, insertAfterNode) {
+            if (!isStartComment(containerNode)) {
+                // Insert after insertion point
+                if (insertAfterNode.nextSibling)
+                    containerNode.insertBefore(nodeToInsert, insertAfterNode.nextSibling);
+                else
+                    containerNode.appendChild(nodeToInsert);    
+            } else {
+                // Children of start comments must always have a parent and at least one following sibling (the end comment)
+                containerNode.parentNode.insertBefore(nodeToInsert, insertAfterNode.nextSibling);
+            }                           
+        },
+
+        nextSibling: function(node) {
+            if (!isStartComment(node)) {
+                if (node.nextSibling && isEndComment(node.nextSibling))
+                    return undefined;
+                return node.nextSibling;
+            } else {
+                return getMatchingEndComment(node).nextSibling;
+            }
+        },
+
+        virtualNodeBindingValue: function(node) {
+            var regexMatch = isStartComment(node);
+            return regexMatch ? regexMatch[1] : null;               
+        },
+
+        extractAnonymousTemplateIfVirtualElement: function(node) {
+            if (ko.virtualElements.virtualNodeBindingValue(node)) {
+                // Empty out the virtual children, and associate "node" with an anonymous template matching its previous virtual children
+                var virtualChildren = ko.virtualElements.childNodes(node);
+                var anonymousTemplateText = nodeArrayToText(virtualChildren);
+                ko.virtualElements.emptyNode(node);
+                new ko.templateSources.anonymousTemplate(node).text(anonymousTemplateText);
+            }
+        }       
+    };  
+})();
 (function () {
     var defaultBindingAttributeName = "data-bind";
     ko.bindingHandlers = {};
@@ -1231,9 +1373,11 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
     }
 
     function applyBindingsToDescendantsInternal (viewModel, elementVerified) {
-        var child;
-        for (var i = 0; child = elementVerified.childNodes[i]; i++)
-            applyBindingsToNodeAndDescendantsInternal(viewModel, child, false);
+        var currentChild = elementVerified.childNodes[0];
+        while (currentChild) {
+            applyBindingsToNodeAndDescendantsInternal(viewModel, currentChild, false);
+            currentChild = ko.virtualElements.nextSibling(currentChild);
+        }
     }
     
     function applyBindingsToNodeAndDescendantsInternal (viewModel, nodeVerified, isRootNodeForBindingContext) {
@@ -1241,9 +1385,10 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
 
         // Apply bindings only if:
         // (1) It's the root for this binding context, as we will need to store the binding context on this node
-        // (2) It might have bindings (e.g., it has a data-bind attribute)
+        // (2) It might have bindings (e.g., it has a data-bind attribute, or it's a marker for a containerless template)
         var isElement = (nodeVerified.nodeType == 1);
-        if (isRootNodeForBindingContext || (isElement && nodeVerified.getAttribute(defaultBindingAttributeName)))
+        var isContainerlessTemplate = ko.virtualElements.virtualNodeBindingValue(nodeVerified);
+        if (isRootNodeForBindingContext || isContainerlessTemplate || (isElement && nodeVerified.getAttribute(defaultBindingAttributeName)))
             shouldBindDescendants = applyBindingsToNodeInternal(nodeVerified, null, viewModel, isRootNodeForBindingContext).shouldBindDescendants;
             
         if (isElement && shouldBindDescendants)
@@ -1254,6 +1399,9 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
         var isFirstEvaluation = true;
         var bindingAttributeName = defaultBindingAttributeName; // Todo: Make this overridable
             
+        // Pre-process any anonymous template bounded by comment nodes
+        ko.virtualElements.extractAnonymousTemplateIfVirtualElement(node);
+
         // Each time the dependentObservable is evaluated (after data changes),
         // the binding attribute is reparsed so that it can pick out the correct
         // model properties in the context of the changed data.
@@ -1283,7 +1431,8 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
                     ko.storedBindingContextForNode(node, bindingContextInstance);
 
                 var evaluatedBindings = (typeof bindings == "function") ? bindings() : bindings;
-                var bindingAttributeValue = (node.nodeType == 1) && node.getAttribute(bindingAttributeName);
+                var bindingAttributeValue = ((node.nodeType == 1) && node.getAttribute(bindingAttributeName))
+                                         || ko.virtualElements.virtualNodeBindingValue(node);
                 if (evaluatedBindings || bindingAttributeValue) {
                     parsedBindings = evaluatedBindings || parseBindingAttribute(bindingAttributeValue, viewModel, bindingContextInstance);
                     
@@ -1336,7 +1485,7 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
     };
 
     ko.applyBindings = function (viewModel, rootNode) {
-        if (rootNode && (rootNode.nodeType !== 1) && (rootNode.nodeType !== 3))
+        if (rootNode && (rootNode.nodeType !== 1) && (rootNode.nodeType !== 3) && (rootNode.nodeType !== 8))
             throw new Error("ko.applyBindings: first parameter should be your view model; second parameter should be a DOM node");
         rootNode = rootNode || window.document.body; // Make "rootNode" parameter optional
         applyBindingsToNodeAndDescendantsInternal(viewModel, rootNode, true);
@@ -1868,7 +2017,7 @@ ko.templateEngine.prototype['makeTemplateSource'] = function(template) {
         if (!elem)
             throw new Error("Cannot find template with ID " + template);
         return new ko.templateSources.domElement(elem);
-    } else if (template.nodeType == 1) {
+    } else if ((template.nodeType == 1) || (template.nodeType == 8)) {
         // Anonymous template
         return new ko.templateSources.anonymousTemplate(template);
     } else
@@ -2020,6 +2169,30 @@ ko.exportSymbol('ko.templateRewriting.applyMemoizedBindingsToNextSibling', ko.te
         _templateEngine = templateEngine;
     }
 
+    ko.activateBindingsOnTemplateRenderedNodes = function(nodeArray, bindingContext) {
+        // To be used on any nodes that have been rendered by a template and have been inserted into some parent element. 
+        // Safely iterates through nodeArray (being tolerant of any changes made to it during binding, e.g., 
+        // if a binding inserts siblings), and for each:
+        // (1) Does a regular "applyBindings" to associate bindingContext with this node and to activate any non-memoized bindings
+        // (2) Unmemoizes any memos in the DOM subtree (e.g., to activate bindings that had been memoized during template rewriting)
+
+        var nodeArrayClone = ko.utils.arrayPushAll([], nodeArray); // So we can tolerate insertions/deletions during binding
+        var node;
+        for (var i = 0; node = nodeArrayClone[i]; i++) {
+            if (!node.parentNode) // Skip anything that has been removed during binding
+                continue;
+            
+            switch (node.nodeType) {
+                case 1: // Elements
+                case 3: // Text nodes (can't have bindings, can have a bindingContext associated with them)
+                case 8: // Comment nodes (may be containerless templates)
+                    ko.applyBindings(bindingContext, node);
+                    ko.memoization.unmemoizeDomNodeAndDescendants(node, [bindingContext]);
+                    break;
+            }
+        }
+    }
+
     function getFirstNodeFromPossibleArray(nodeOrNodeArray) {
         return nodeOrNodeArray.nodeType ? nodeOrNodeArray
                                         : nodeOrNodeArray.length > 0 ? nodeOrNodeArray[0]
@@ -2036,20 +2209,18 @@ ko.exportSymbol('ko.templateRewriting.applyMemoizedBindingsToNextSibling', ko.te
         if ((typeof renderedNodesArray.length != "number") || (renderedNodesArray.length > 0 && typeof renderedNodesArray[0].nodeType != "number"))
             throw "Template engine must return an array of DOM nodes";
 
-        if (renderedNodesArray)
-            ko.utils.arrayForEach(renderedNodesArray, function (renderedNode) {
-                // The following line is a no-op for native template engine (it's already stored the binding context when it ran applyBindings)
-                // but other template engines need it because they don't call applyBindings (they use unmemoization instead)
-                ko.storedBindingContextForNode(renderedNode, bindingContext);
-
-                ko.memoization.unmemoizeDomNodeAndDescendants(renderedNode, [bindingContext]);
-            });
-
         switch (renderMode) {
-            case "replaceChildren": ko.utils.setDomNodeChildren(targetNodeOrNodeArray, renderedNodesArray); break;
-            case "replaceNode": ko.utils.replaceDomNodes(targetNodeOrNodeArray, renderedNodesArray); break;
+            case "replaceChildren": 
+                ko.virtualElements.setDomNodeChildren(targetNodeOrNodeArray, renderedNodesArray); 
+                ko.activateBindingsOnTemplateRenderedNodes(renderedNodesArray, bindingContext);
+                break;
+            case "replaceNode": 
+                ko.utils.replaceDomNodes(targetNodeOrNodeArray, renderedNodesArray); 
+                ko.activateBindingsOnTemplateRenderedNodes(renderedNodesArray, bindingContext);
+                break;
             case "ignoreTargetNode": break;
-            default: throw new Error("Unknown renderMode: " + renderMode);
+            default: 
+                throw new Error("Unknown renderMode: " + renderMode);
         }
 
         if (options['afterRender'])
@@ -2097,7 +2268,16 @@ ko.exportSymbol('ko.templateRewriting.applyMemoizedBindingsToNextSibling', ko.te
         }
     };
 
-    ko.renderTemplateForEach = function (template, arrayOrObservableArray, options, targetNode, parentBindingContext) {
+    ko.renderTemplateForEach = function (template, arrayOrObservableArray, options, targetNode, parentBindingContext) {   
+        var createInnerBindingContext = function(arrayValue) {
+            return parentBindingContext.createChildContext(ko.utils.unwrapObservable(arrayValue));
+        };
+
+        // This will be called whenever setDomNodeChildrenFromArrayMapping has added nodes to targetNode
+        var activateBindingsCallback = function(arrayValue, addedNodesArray) {
+            ko.activateBindingsOnTemplateRenderedNodes(addedNodesArray, createInnerBindingContext(arrayValue));
+        };
+         
         return new ko.dependentObservable(function () {
             var unwrappedArray = ko.utils.unwrapObservable(arrayOrObservableArray) || [];
             if (typeof unwrappedArray.length == "undefined") // Coerce single value into array
@@ -2111,10 +2291,9 @@ ko.exportSymbol('ko.templateRewriting.applyMemoizedBindingsToNextSibling', ko.te
             ko.utils.setDomNodeChildrenFromArrayMapping(targetNode, filteredArray, function (arrayValue) {
                 // Support selecting template as a function of the data being rendered
                 var templateName = typeof(template) == 'function' ? template(arrayValue) : template;
-                
-                var innerBindingContext = parentBindingContext.createChildContext(ko.utils.unwrapObservable(arrayValue));
-                return executeTemplate(null, "ignoreTargetNode", templateName, innerBindingContext, options);
-            }, options);
+                return executeTemplate(null, "ignoreTargetNode", templateName, createInnerBindingContext(arrayValue), options);
+            }, options, activateBindingsCallback);
+            
         }, null, { 'disposeWhenNodeIsRemoved': targetNode });
     };
 
@@ -2130,7 +2309,7 @@ ko.exportSymbol('ko.templateRewriting.applyMemoizedBindingsToNextSibling', ko.te
         'init': function(element, valueAccessor) {
             // Support anonymous templates
             var bindingValue = ko.utils.unwrapObservable(valueAccessor());
-            if ((typeof bindingValue != "string") && !bindingValue.name) {
+            if ((typeof bindingValue != "string") && (!bindingValue.name) && (element.nodeType == 1)) {
                 // It's an anonymous template - store the element contents, then clear the element
                 new ko.templateSources.anonymousTemplate(element).text(element.innerHTML);
                 ko.utils.emptyDomNode(element);
@@ -2169,7 +2348,7 @@ ko.exportSymbol('ko.templateRewriting.applyMemoizedBindingsToNextSibling', ko.te
                         : bindingContext;                                                                    // Given no explicit 'data' value, we retain the same binding context
                     templateSubscription = ko.renderTemplate(templateName || element, innerBindingContext, /* options: */ bindingValue, element);
                 } else
-                    ko.utils.emptyDomNode(element);
+                    ko.virtualElements.emptyNode(element);
             }
             
             // It only makes sense to have a single template subscription per element (otherwise which one should have its output displayed?)
@@ -2272,15 +2451,21 @@ ko.exportSymbol('ko.utils.compareArrays', ko.utils.compareArrays);
     //   so that its children is again the concatenation of the mappings of the array elements, but don't re-map any array elements that we
     //   previously mapped - retain those nodes, and just insert/delete other ones
 
-    function mapNodeAndRefreshWhenChanged(containerNode, mapping, valueToMap) {
+    // "callbackAfterAddingNodes" will be invoked after any "mapping"-generated nodes are inserted into the container node
+    // You can use this, for example, to activate bindings on those nodes.
+
+    function mapNodeAndRefreshWhenChanged(containerNode, mapping, valueToMap, callbackAfterAddingNodes) {
         // Map this array value inside a dependentObservable so we re-map when any dependency changes
         var mappedNodes = [];
         var dependentObservable = ko.dependentObservable(function() {
             var newMappedNodes = mapping(valueToMap) || [];
             
             // On subsequent evaluations, just replace the previously-inserted DOM nodes
-            if (mappedNodes.length > 0)
+            if (mappedNodes.length > 0) {
                 ko.utils.replaceDomNodes(mappedNodes, newMappedNodes);
+                if (callbackAfterAddingNodes)
+                    callbackAfterAddingNodes(valueToMap, newMappedNodes);
+            }
             
             // Replace the contents of the mappedNodes array, thereby updating the record
             // of which nodes would be deleted if valueToMap was itself later removed
@@ -2292,7 +2477,7 @@ ko.exportSymbol('ko.utils.compareArrays', ko.utils.compareArrays);
     
     var lastMappingResultDomDataKey = "setDomNodeChildrenFromArrayMapping_lastMappingResult";
 
-    ko.utils.setDomNodeChildrenFromArrayMapping = function (domNode, array, mapping, options) {
+    ko.utils.setDomNodeChildrenFromArrayMapping = function (domNode, array, mapping, options, callbackAfterAddingNodes) {
         // Compare the provided array against the previous one
         array = array || [];
         options = options || {};
@@ -2335,7 +2520,8 @@ ko.exportSymbol('ko.utils.compareArrays', ko.utils.compareArrays);
                     break;
 
                 case "added": 
-                    var mapData = mapNodeAndRefreshWhenChanged(domNode, mapping, editScript[i].value);
+                    var valueToMap = editScript[i].value;
+                    var mapData = mapNodeAndRefreshWhenChanged(domNode, mapping, valueToMap, callbackAfterAddingNodes);
                     var mappedNodes = mapData.mappedNodes;
                     
                     // On the first evaluation, insert the nodes at the current insertion point
@@ -2348,20 +2534,16 @@ ko.exportSymbol('ko.utils.compareArrays', ko.utils.compareArrays);
                           value: editScript[i].value
                         });
                         if (insertAfterNode == null) {
-                            // Insert at beginning
-                            if (domNode.firstChild)
-                                domNode.insertBefore(node, domNode.firstChild);
-                            else
-                                domNode.appendChild(node);
+                            // Insert "node" (the newly-created node) as domNode's first child
+                            ko.virtualElements.prepend(domNode, node);
                         } else {
-                            // Insert after insertion point
-                            if (insertAfterNode.nextSibling)
-                                domNode.insertBefore(node, insertAfterNode.nextSibling);
-                            else
-                                domNode.appendChild(node);
+                            // Insert "node" into "domNode" immediately after "insertAfterNode"
+                            ko.virtualElements.insertAfter(domNode, node, insertAfterNode);
                         }
                         insertAfterNode = node;
-                    }    		
+                    } 
+                    if (callbackAfterAddingNodes)
+                        callbackAfterAddingNodes(valueToMap, mappedNodes);
                     break;
             }
         }
@@ -2382,8 +2564,7 @@ ko.exportSymbol('ko.utils.compareArrays', ko.utils.compareArrays);
         }
         if (!invokedBeforeRemoveCallback)
             ko.utils.arrayForEach(nodesToDelete, function (node) {
-                if (node.element.parentNode)
-                    node.element.parentNode.removeChild(node.element);
+                ko.removeNode(node.element);
             });
 
         // Store a copy of the array items we just considered so we can difference it next time
@@ -2399,14 +2580,7 @@ ko.nativeTemplateEngine = function () {
 ko.nativeTemplateEngine.prototype = new ko.templateEngine();
 ko.nativeTemplateEngine.prototype['renderTemplateSource'] = function (templateSource, bindingContext, options) {
     var templateText = templateSource.text();
-    var parsedElems = ko.utils.parseHtmlFragment(templateText);
-    
-    for (var i = 0, j = parsedElems.length; i < j; i++) {
-        if ((parsedElems[i].nodeType === 1) || (parsedElems[i].nodeType === 3))
-            ko.applyBindings(bindingContext, parsedElems[i]);
-    }
-    
-    return parsedElems;
+    return ko.utils.parseHtmlFragment(templateText);
 };
 
 ko.nativeTemplateEngine.instance = new ko.nativeTemplateEngine();
