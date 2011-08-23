@@ -81,6 +81,14 @@ ko.utils = new (function () {
             return array;
         },
 
+        extend: function (target, source) {
+            for(var prop in source) {
+                if(source.hasOwnProperty(prop)) {
+                    target[prop] = source[prop];
+                }
+            }
+        },
+
         emptyDomNode: function (domNode) {
             while (domNode.firstChild) {
                 ko.removeNode(domNode.firstChild);
@@ -363,6 +371,7 @@ ko.exportSymbol('ko.utils.arrayIndexOf', ko.utils.arrayIndexOf);
 ko.exportSymbol('ko.utils.arrayMap', ko.utils.arrayMap);
 ko.exportSymbol('ko.utils.arrayPushAll', ko.utils.arrayPushAll);
 ko.exportSymbol('ko.utils.arrayRemoveItem', ko.utils.arrayRemoveItem);
+ko.exportSymbol('ko.utils.extend', ko.utils.extend);
 ko.exportSymbol('ko.utils.fieldsIncludedWithJsonPost', ko.utils.fieldsIncludedWithJsonPost);
 ko.exportSymbol('ko.utils.getFormFields', ko.utils.getFormFields);
 ko.exportSymbol('ko.utils.postJson', ko.utils.postJson);
@@ -404,7 +413,8 @@ ko.utils.domData = new (function () {
         },
         getAll: function (node, createIfNotFound) {
             var dataStoreKey = node[dataStoreKeyExpandoPropertyName];
-            if (!dataStoreKey) {
+            var hasExistingDataStore = dataStoreKey && (dataStoreKey !== "null");
+            if (!hasExistingDataStore) {
                 if (!createIfNotFound)
                     return undefined;
                 dataStoreKey = node[dataStoreKeyExpandoPropertyName] = "ko" + uniqueId++;
@@ -421,6 +431,9 @@ ko.utils.domData = new (function () {
         }
     }
 })();
+
+ko.exportSymbol('ko.utils.domData', ko.utils.domData);
+ko.exportSymbol('ko.utils.domData.clear', ko.utils.domData.clear); // Exporting only so specs can clear up after themselves fully
 ko.utils.domNodeDisposal = new (function () {
     var domDataKey = "__ko_domNodeDisposal__" + (new Date).getTime();
     
@@ -648,47 +661,51 @@ function applyExtenders(requestedExtenders) {
 ko.exportSymbol('ko.extenders', ko.extenders);
 ko.subscription = function (callback, disposeCallback) {
     this.callback = callback;
-    this.dispose = function () {
-        this.isDisposed = true;
-        disposeCallback();
-    }['bind'](this);
-    
+    this.disposeCallback = disposeCallback;    
     ko.exportProperty(this, 'dispose', this.dispose);
+};
+ko.subscription.prototype.dispose = function () {
+    this.isDisposed = true;
+    this.disposeCallback();
 };
 
 ko.subscribable = function () {
-    var _subscriptions = [];
+    this._subscriptions = [];
 
-    this.subscribe = function (callback, callbackTarget) {
-        var boundCallback = callbackTarget ? callback.bind(callbackTarget) : callback;
-
-        var subscription = new ko.subscription(boundCallback, function () {
-            ko.utils.arrayRemoveItem(_subscriptions, subscription);
-        });
-        _subscriptions.push(subscription);
-        return subscription;
-    };
-
-    this.notifySubscribers = function (valueToNotify) {
-        ko.utils.arrayForEach(_subscriptions.slice(0), function (subscription) {
-            // In case a subscription was disposed during the arrayForEach cycle, check
-            // for isDisposed on each subscription before invoking its callback
-            if (subscription && (subscription.isDisposed !== true))
-                subscription.callback(valueToNotify);
-        });
-    };
-
-    this.getSubscriptionsCount = function () {
-        return _subscriptions.length;
-    };
-    
-    this.extend = applyExtenders;
-    
+    ko.utils.extend(this, ko.subscribable['fn']);
     ko.exportProperty(this, 'subscribe', this.subscribe);
     ko.exportProperty(this, 'extend', this.extend);
     ko.exportProperty(this, 'notifySubscribers', this.notifySubscribers);
     ko.exportProperty(this, 'getSubscriptionsCount', this.getSubscriptionsCount);
 }
+
+ko.subscribable['fn'] = {
+    subscribe: function (callback, callbackTarget) {
+        var boundCallback = callbackTarget ? callback.bind(callbackTarget) : callback;
+
+        var subscription = new ko.subscription(boundCallback, function () {
+            ko.utils.arrayRemoveItem(this._subscriptions, subscription);
+        }.bind(this));
+        this._subscriptions.push(subscription);
+        return subscription;
+    },
+
+    notifySubscribers: function (valueToNotify) {
+        ko.utils.arrayForEach(this._subscriptions.slice(0), function (subscription) {
+            // In case a subscription was disposed during the arrayForEach cycle, check
+            // for isDisposed on each subscription before invoking its callback
+            if (subscription && (subscription.isDisposed !== true))
+                subscription.callback(valueToNotify);
+        });
+    },
+
+    getSubscriptionsCount: function () {
+        return this._subscriptions.length;
+    },
+    
+    extend: applyExtenders
+};
+
 
 ko.isSubscribable = function (instance) {
     return typeof instance.subscribe == "function" && typeof instance.notifySubscribers == "function";
@@ -723,11 +740,6 @@ ko.dependencyDetection = (function () {
     };
 })();var primitiveTypes = { 'undefined':true, 'boolean':true, 'number':true, 'string':true };
 
-function valuesArePrimitiveAndEqual(a, b) {
-    var oldValueIsPrimitive = (a === null) || (typeof(a) in primitiveTypes);
-    return oldValueIsPrimitive ? (a === b) : false;
-}
-
 ko.observable = function (initialValue) {
     var _latestValue = initialValue;
 
@@ -748,16 +760,24 @@ ko.observable = function (initialValue) {
             return _latestValue;
         }
     }
-    observable.__ko_proto__ = ko.observable;
-    observable.valueHasMutated = function () { observable.notifySubscribers(_latestValue); }
-    observable['equalityComparer'] = valuesArePrimitiveAndEqual;
-    
     ko.subscribable.call(observable);
+    observable.valueHasMutated = function () { observable.notifySubscribers(_latestValue); }
+    ko.utils.extend(observable, ko.observable['fn']);    
     
     ko.exportProperty(observable, "valueHasMutated", observable.valueHasMutated);
     
     return observable;
 }
+
+ko.observable['fn'] = {
+    __ko_proto__: ko.observable,
+
+    "equalityComparer": function valuesArePrimitiveAndEqual(a, b) {
+        var oldValueIsPrimitive = (a === null) || (typeof(a) in primitiveTypes);
+        return oldValueIsPrimitive ? (a === b) : false;
+    }
+};
+
 ko.isObservable = function (instance) {
     if ((instance === null) || (instance === undefined) || (instance.__ko_proto__ === undefined)) return false;
     if (instance.__ko_proto__ === ko.observable) return true;
@@ -785,26 +805,23 @@ ko.observableArray = function (initialValues) {
     }
     if ((initialValues !== null) && (initialValues !== undefined) && !('length' in initialValues))
         throw new Error("The argument passed when initializing an observable array must be an array, or null, or undefined.");
+        
     var result = new ko.observable(initialValues);
+    ko.utils.extend(result, ko.observableArray['fn']);
+    
+    ko.exportProperty(result, "remove", result.remove);
+    ko.exportProperty(result, "removeAll", result.removeAll);
+    ko.exportProperty(result, "destroy", result.destroy);
+    ko.exportProperty(result, "destroyAll", result.destroyAll);
+    ko.exportProperty(result, "indexOf", result.indexOf);
+    ko.exportProperty(result, "replace", result.replace);
+    
+    return result;
+}
 
-    ko.utils.arrayForEach(["pop", "push", "reverse", "shift", "sort", "splice", "unshift"], function (methodName) {
-        result[methodName] = function () {
-            var underlyingArray = result();
-            var methodCallResult = underlyingArray[methodName].apply(underlyingArray, arguments);
-            result.valueHasMutated();
-            return methodCallResult;
-        };
-    });
-
-    ko.utils.arrayForEach(["slice"], function (methodName) {
-        result[methodName] = function () {
-            var underlyingArray = result();
-            return underlyingArray[methodName].apply(underlyingArray, arguments);
-        };
-    });
-
-    result.remove = function (valueOrPredicate) {
-        var underlyingArray = result();
+ko.observableArray['fn'] = {
+    remove: function (valueOrPredicate) {
+        var underlyingArray = this();
         var remainingValues = [];
         var removedValues = [];
         var predicate = typeof valueOrPredicate == "function" ? valueOrPredicate : function (value) { return value === valueOrPredicate; };
@@ -815,76 +832,84 @@ ko.observableArray = function (initialValues) {
             else
                 removedValues.push(value);
         }
-        result(remainingValues);
+        this(remainingValues);
         return removedValues;
-    };
+    },
 
-    result.removeAll = function (arrayOfValues) {
+    removeAll: function (arrayOfValues) {
         // If you passed zero args, we remove everything
         if (arrayOfValues === undefined) {
-            var allValues = result();
-            result([]);
+            var allValues = this();
+            this([]);
             return allValues;
         }
         
         // If you passed an arg, we interpret it as an array of entries to remove
         if (!arrayOfValues)
             return [];
-        return result.remove(function (value) {
+        return this.remove(function (value) {
             return ko.utils.arrayIndexOf(arrayOfValues, value) >= 0;
         });
-    };
+    },
     
-    result.destroy = function (valueOrPredicate) {
-        var underlyingArray = result();
+    destroy: function (valueOrPredicate) {
+        var underlyingArray = this();
         var predicate = typeof valueOrPredicate == "function" ? valueOrPredicate : function (value) { return value === valueOrPredicate; };
         for (var i = underlyingArray.length - 1; i >= 0; i--) {
             var value = underlyingArray[i];
             if (predicate(value))
                 underlyingArray[i]["_destroy"] = true;
         }
-        result.valueHasMutated();
-    };
-    
-    result.destroyAll = function (arrayOfValues) {
+        this.valueHasMutated();
+    },
+        
+    destroyAll: function (arrayOfValues) {
         // If you passed zero args, we destroy everything
         if (arrayOfValues === undefined)
-            return result.destroy(function() { return true });
+            return this.destroy(function() { return true });
                 
         // If you passed an arg, we interpret it as an array of entries to destroy
         if (!arrayOfValues)
             return [];
-        return result.destroy(function (value) {
+        return this.destroy(function (value) {
             return ko.utils.arrayIndexOf(arrayOfValues, value) >= 0;
-        });		    	
-    };
+        });             
+    },
 
-    result.indexOf = function (item) {
-        var underlyingArray = result();
+    indexOf: function (item) {
+        var underlyingArray = this();
         return ko.utils.arrayIndexOf(underlyingArray, item);
-    };
+    },
     
-    result.replace = function(oldItem, newItem) {
-        var index = result.indexOf(oldItem);
+    replace: function(oldItem, newItem) {
+        var index = this.indexOf(oldItem);
         if (index >= 0) {
-            result()[index] = newItem;
-            result.valueHasMutated();
-        }	
-    };
-    
-    ko.exportProperty(result, "remove", result.remove);
-    ko.exportProperty(result, "removeAll", result.removeAll);
-    ko.exportProperty(result, "destroy", result.destroy);
-    ko.exportProperty(result, "destroyAll", result.destroyAll);
-    ko.exportProperty(result, "indexOf", result.indexOf);
-    
-    return result;
+            this()[index] = newItem;
+            this.valueHasMutated();
+        }   
+    }    
 }
 
+// Populate ko.observableArray.fn with read/write functions from native arrays
+ko.utils.arrayForEach(["pop", "push", "reverse", "shift", "sort", "splice", "unshift"], function (methodName) {
+    ko.observableArray['fn'][methodName] = function () { 
+        var underlyingArray = this();
+        var methodCallResult = underlyingArray[methodName].apply(underlyingArray, arguments);
+        this.valueHasMutated();
+        return methodCallResult;
+    };
+});
+
+// Populate ko.observableArray.fn with read-only functions from native arrays
+ko.utils.arrayForEach(["slice"], function (methodName) {
+    ko.observableArray['fn'][methodName] = function () {
+        var underlyingArray = this();
+        return underlyingArray[methodName].apply(underlyingArray, arguments);
+    };
+});
+
 ko.exportSymbol('ko.observableArray', ko.observableArray);
-ko.dependentObservable = function (evaluatorFunctionOrOptions, evaluatorFunctionTarget, options) {
-    var _latestValue, _hasBeenEvaluated = false;
-    
+function prepareOptions(evaluatorFunctionOrOptions, evaluatorFunctionTarget, options) {
     if (evaluatorFunctionOrOptions && typeof evaluatorFunctionOrOptions == "object") {
         // Single-parameter syntax - everything is on this "options" param
         options = evaluatorFunctionOrOptions;
@@ -899,6 +924,14 @@ ko.dependentObservable = function (evaluatorFunctionOrOptions, evaluatorFunction
     if (typeof options["read"] != "function")
         throw "Pass a function that returns the value of the dependentObservable";
         
+    return options;    
+}
+
+ko.dependentObservable = function (evaluatorFunctionOrOptions, evaluatorFunctionTarget, options) {
+    var _latestValue, 
+        _hasBeenEvaluated = false, 
+        options = prepareOptions(evaluatorFunctionOrOptions, evaluatorFunctionTarget, options);
+
     // Build "disposeWhenNodeIsRemoved" and "disposeWhenNodeIsRemovedCallback" option values
     // (Note: "disposeWhenNodeIsRemoved" option both proactively disposes as soon as the node is removed using ko.removeNode(),
     // plus adds a "disposeWhen" callback that, on each evaluation, disposes if the node was removed by some other means.)
@@ -963,8 +996,7 @@ ko.dependentObservable = function (evaluatorFunctionOrOptions, evaluatorFunction
             ko.dependencyDetection.registerDependency(dependentObservable);
             return _latestValue;
         }
-    }
-    dependentObservable.__ko_proto__ = ko.dependentObservable;
+    }    
     dependentObservable.getDependenciesCount = function () { return _subscriptionsToDependencies.length; }
     dependentObservable.hasWriteFunction = typeof options["write"] === "function";
     dependentObservable.dispose = function () {
@@ -974,6 +1006,8 @@ ko.dependentObservable = function (evaluatorFunctionOrOptions, evaluatorFunction
     };
     
     ko.subscribable.call(dependentObservable);
+    ko.utils.extend(dependentObservable, ko.dependentObservable['fn']);
+
     if (options['deferEvaluation'] !== true)
         evaluate();
     
@@ -982,10 +1016,15 @@ ko.dependentObservable = function (evaluatorFunctionOrOptions, evaluatorFunction
     
     return dependentObservable;
 };
+
+ko.dependentObservable['fn'] = {
+    __ko_proto__: ko.dependentObservable
+};
+
 ko.dependentObservable.__ko_proto__ = ko.observable;
 
 ko.exportSymbol('ko.dependentObservable', ko.dependentObservable);
-
+ko.exportSymbol('ko.computed', ko.dependentObservable); // Make "ko.computed" an alias for "ko.dependentObservable"
 (function() {    
     var maxNestedObservableDepth = 10; // Escape the (unlikely) pathalogical case where an observable's current value is itself (or similar reference cycle)
     
@@ -1237,9 +1276,9 @@ ko.jsonExpressionRewriting = (function () {
                 if ((colonPos > 0) && (colonPos < pair.length - 1)) {
                     var key = pair.substring(0, colonPos);
                     var value = pair.substring(colonPos + 1);
-                    result.push({ key: restoreTokens(key, tokens), value: restoreTokens(value, tokens) });
+                    result.push({ 'key': restoreTokens(key, tokens), 'value': restoreTokens(value, tokens) });
                 } else {
-                    result.push({ unknown: restoreTokens(pair, tokens) });
+                    result.push({ 'unknown': restoreTokens(pair, tokens) });
                 }
             }
             return result;            
@@ -1254,19 +1293,19 @@ ko.jsonExpressionRewriting = (function () {
                 if (resultStrings.length > 0)
                     resultStrings.push(",");
 
-                if (parsedSection.key) {
-                    var quotedKey = ensureQuoted(parsedSection.key);
+                if (parsedSection['key']) {
+                    var quotedKey = ensureQuoted(parsedSection['key']), val = parsedSection['value'];
                     resultStrings.push(quotedKey);
                     resultStrings.push(":");              
-                    resultStrings.push(parsedSection.value);
+                    resultStrings.push(val);
 
-                    if (isWriteableValue(ko.utils.stringTrim(parsedSection.value))) {
+                    if (isWriteableValue(ko.utils.stringTrim(val))) {
                         if (propertyAccessorResultStrings.length > 0)
                             propertyAccessorResultStrings.push(", ");
-                        propertyAccessorResultStrings.push(quotedKey + " : function(__ko_value) { " + parsedSection.value + " = __ko_value; }");
+                        propertyAccessorResultStrings.push(quotedKey + " : function(__ko_value) { " + val + " = __ko_value; }");
                     }                    
-                } else if (parsedSection.unknown) {
-                    resultStrings.push(parsedSection.unknown);
+                } else if (parsedSection['unknown']) {
+                    resultStrings.push(parsedSection['unknown']);
                 }
             }
 
@@ -1330,10 +1369,13 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
         return startComment.nextSibling;
     }
 
-    function nodeArrayToText(nodeArray) {
+    function nodeArrayToText(nodeArray, cleanNodes) {
         var texts = [];
-        for (var i = 0, j = nodeArray.length; i < j; i++)
+        for (var i = 0, j = nodeArray.length; i < j; i++) {
+            if (cleanNodes)
+                ko.utils.domNodeDisposal.cleanNode(nodeArray[i]);
             texts.push(ko.utils.outerHTML(nodeArray[i]));
+        }
         return String.prototype.concat.apply("", texts);
     }   
 
@@ -1407,7 +1449,7 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
             if (ko.virtualElements.virtualNodeBindingValue(node)) {
                 // Empty out the virtual children, and associate "node" with an anonymous template matching its previous virtual children
                 var virtualChildren = ko.virtualElements.childNodes(node);
-                var anonymousTemplateText = nodeArrayToText(virtualChildren);
+                var anonymousTemplateText = nodeArrayToText(virtualChildren, true);
                 ko.virtualElements.emptyNode(node);
                 new ko.templateSources.anonymousTemplate(node).text(anonymousTemplateText);
             }
@@ -1462,12 +1504,14 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
         // (2) It might have bindings (e.g., it has a data-bind attribute, or it's a marker for a containerless template)
         var isElement = (nodeVerified.nodeType == 1);
         var isContainerlessTemplate = ko.virtualElements.virtualNodeBindingValue(nodeVerified);
-        var shouldApplyBindings = isContainerlessTemplate                                               // Case (2)
-                               || (isElement && isRootNodeForBindingContext)                            // Case (1)
-                               || (isElement && nodeVerified.getAttribute(defaultBindingAttributeName)) // Case (2)
+        var domDataBindings = ko.utils.domData.get(nodeVerified, "bindings");
+        var shouldApplyBindings = isContainerlessTemplate                                                // Case (2)
+                               || domDataBindings                                                        // Case (2)
+                               || (isElement && isRootNodeForBindingContext)                             // Case (1)
+                               || (isElement && nodeVerified.getAttribute(defaultBindingAttributeName)); // Case (2)
         
         if (shouldApplyBindings)
-            shouldBindDescendants = applyBindingsToNodeInternal(nodeVerified, null, viewModel, isRootNodeForBindingContext).shouldBindDescendants;
+            shouldBindDescendants = applyBindingsToNodeInternal(nodeVerified, domDataBindings, viewModel, isRootNodeForBindingContext).shouldBindDescendants;
             
         if (isElement && shouldBindDescendants)
             applyBindingsToDescendantsInternal(viewModel, nodeVerified);
@@ -1566,6 +1610,11 @@ ko.exportSymbol('ko.jsonExpressionRewriting.insertPropertyAccessorsIntoJson', ko
         if (rootNode && (rootNode.nodeType !== 1) && (rootNode.nodeType !== 8))
             throw new Error("ko.applyBindings: first parameter should be your view model; second parameter should be a DOM node");
         rootNode = rootNode || window.document.body; // Make "rootNode" parameter optional
+
+        // An opportunity for bindings to be applied externally
+        if (typeof ko['beforeApplyBindings'] === "function")
+            ko['beforeApplyBindings'](rootNode);
+
         applyBindingsToNodeAndDescendantsInternal(viewModel, rootNode, true);
     };
 
@@ -1990,6 +2039,34 @@ ko.bindingHandlers['attr'] = {
     }
 };
 
+ko.bindingHandlers['hasfocus'] = {
+    'init': function(element, valueAccessor, allBindingsAccessor) {
+        var writeValue = function(valueToWrite) {
+            var modelValue = valueAccessor();
+            if (valueToWrite == ko.utils.unwrapObservable(modelValue))
+                return;
+
+            if (ko.isWriteableObservable(modelValue))
+                modelValue(valueToWrite);
+            else {
+                var allBindings = allBindingsAccessor();
+                if (allBindings['_ko_property_writers'] && allBindings['_ko_property_writers']['hasfocus']) {
+                    allBindings['_ko_property_writers']['hasfocus'](valueToWrite);
+                }                
+            }
+        };
+        ko.utils.registerEventHandler(element, "focus", function() { writeValue(true) });
+        ko.utils.registerEventHandler(element, "focusin", function() { writeValue(true) }); // For IE
+        ko.utils.registerEventHandler(element, "blur",  function() { writeValue(false) });
+        ko.utils.registerEventHandler(element, "focusout",  function() { writeValue(false) }); // For IE
+    },
+    'update': function(element, valueAccessor) {
+        var value = ko.utils.unwrapObservable(valueAccessor());
+        value ? element.focus() : element.blur();
+        ko.utils.triggerEvent(element, value ? "focusin" : "focusout"); // For IE, which doesn't reliably fire "focus" or "blur" events synchronously
+    }
+};
+
 // "with: someExpression" is equivalent to "template: { if: someExpression, data: someExpression }"
 ko.bindingHandlers['with'] = {
     makeTemplateValueAccessor: function(valueAccessor) {
@@ -2220,7 +2297,7 @@ ko.exportSymbol('ko.templateRewriting.applyMemoizedBindingsToNextSibling', ko.te
         if (arguments.length === 1) {
             return ko.utils.domData.get(this.domElement, "templateSourceData_" + key);
         } else {
-            ko.utils.domData.set(this.domElement, "templateSourceData_" + key, arguments[0]);
+            ko.utils.domData.set(this.domElement, "templateSourceData_" + key, arguments[1]);
         }
     };
     
