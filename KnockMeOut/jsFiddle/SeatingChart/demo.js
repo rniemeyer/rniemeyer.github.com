@@ -1,3 +1,5 @@
+$(function() {
+
 ko.bindingHandlers.flash = {
     init: function(element) {
         $(element).hide();
@@ -99,3 +101,5 @@ ko.bindingHandlers.sortable.beforeMove = vm.verifyAssignments;
 ko.bindingHandlers.sortable.afterMove = vm.updateLastAction;
 
 ko.applyBindings(vm);
+
+});
