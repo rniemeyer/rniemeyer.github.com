@@ -1,3 +1,7 @@
+<script type='text/javascript' src="https://github.com/downloads/SteveSanderson/knockout/knockout-2.0.0.debug.js"></script>
+<script type='text/javascript' src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.js"></script>
+<script type='text/javascript' src="https://github.com/downloads/rniemeyer/knockout-sortable/knockout-sortable.js"></script>
+
 <div>Seating Assignments</div>
 <div class="note">Rules: no more than 4 students per table. Must have at least one student of each gender at a full table.</div>
 <div id="main" data-bind="foreach: tables">
@@ -16,6 +20,7 @@
         <div class="student" data-bind="text: name"></div>
     </div>
 </div>
+
 
 <div id="message" data-bind="flash: lastAction"></div>
 <div id="error" data-bind="flash: lastError"></div>
