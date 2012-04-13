@@ -5,6 +5,7 @@ description: An example of using the knockout-sortable plugin to manage a seatin
 authors:
   - Ryan Niemeyer
 resources:
+  - ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.js
   - http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.js
   - https://github.com/downloads/SteveSanderson/knockout/knockout-2.0.0.debug.js
   - https://github.com/downloads/rniemeyer/knockout-sortable/knockout-sortable.js
