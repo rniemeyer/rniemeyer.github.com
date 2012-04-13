@@ -1,6 +1,7 @@
-/*
+knockout-sortable - Seating Chart example
+
 ---
-name: knockout-sortable: Seating Chart example
+name: knockout-sortable - Seating Chart example
 description: An example of using the knockout-sortable plugin to manage a seating chart
 authors:
   - Ryan Niemeyer
@@ -9,4 +10,4 @@ resources:
   - https://github.com/downloads/SteveSanderson/knockout/knockout-2.0.0.debug.js
   - https://github.com/downloads/rniemeyer/knockout-sortable/knockout-sortable.js
 ...
-*/
+
